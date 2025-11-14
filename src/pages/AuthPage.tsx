@@ -7,13 +7,20 @@ export const AuthPage: React.FC = () => {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const signIn = async (e: React.FormEvent) => {
+    const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const { error } = await supabase.auth.signInWithOtp({ email });
+
+    const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+        emailRedirectTo: window.location.origin,
+        },
+    });
+
     if (error) setError(error.message);
     else setSent(true);
-  };
+    };
 
   return (
     <div className="app-container">
