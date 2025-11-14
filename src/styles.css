@@ -111,3 +111,74 @@ button:disabled {
 .flex-grow {
   flex: 1;
 }
+
+.book-card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.book-cover {
+  width: 60px;
+  min-width: 60px;
+  height: 90px;
+  border-radius: 0.35rem;
+  object-fit: cover;
+  background: #e5e7eb;
+}
+
+.book-cover.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.book-card-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.book-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.book-title {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.book-author {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-top: 0.1rem;
+}
+
+.book-badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.book-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.book-isbn {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+}
