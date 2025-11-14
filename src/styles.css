@@ -53,8 +53,9 @@ body,
   overflow: hidden;
 }
 
-/* === Top bar === */
+/* === Top bar / Header === */
 
+/* Old header class (for backwards compatibility) */
 .topbar {
   display: flex;
   align-items: center;
@@ -62,6 +63,17 @@ body,
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
   background: linear-gradient(to right, #eef2ff, #f9fafb);
+}
+
+/* New header class used in App.tsx – match topbar look */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(to right, #eef2ff, #f9fafb);
+  gap: 0.75rem;
 }
 
 .topbar-left {
@@ -76,9 +88,15 @@ body,
   letter-spacing: 0.02em;
 }
 
+/* Navigation button containers */
 .topbar-nav {
   display: flex;
   gap: 0.25rem;
+}
+
+.app-header .topbar-nav {
+  flex: 1;
+  justify-content: center;
 }
 
 .topbar-right {
@@ -92,6 +110,7 @@ button {
   font-family: inherit;
 }
 
+/* Old nav button class */
 .nav-button {
   border-radius: 999px;
   border: 1px solid transparent;
@@ -113,6 +132,36 @@ button {
   color: #fff;
   border-color: var(--accent-strong);
 }
+
+/* New nav button class (App.tsx uses .nav-btn) – same styling */
+.nav-btn {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-btn:hover {
+  background: rgba(99, 102, 241, 0.06);
+  color: var(--accent-strong);
+}
+
+.nav-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent-strong);
+}
+
+.nav-btn.small.red {
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #b91c1c;
+}
+
+/* Primary / secondary buttons */
 
 .primary {
   display: inline-flex;
@@ -170,6 +219,8 @@ button {
   padding-block: 0.3rem;
 }
 
+/* Inputs */
+
 .input,
 .select,
 .textarea {
@@ -202,11 +253,14 @@ button {
   appearance: none;
 }
 
-/* === Cards & layout === */
+/* === Main layout === */
 
-main {
+main,
+.app-main {
   padding: 1rem 1.25rem 1.25rem;
 }
+
+/* === Cards & layout === */
 
 .card {
   background: var(--bg-card);
@@ -249,72 +303,94 @@ main {
   color: var(--text-muted);
 }
 
-/* === Book cards (from earlier) === */
+/* === Library view === */
+
+.library-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.library-controls {
+  width: 100%;
+  max-width: 260px;
+}
+
+.book-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* === Book cards === */
 
 .book-card {
   display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 0.7rem 0.8rem;
+  background: var(--bg-card);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.03);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s ease,
+    border-color 0.15s ease, background 0.15s ease;
 }
 
-.book-cover {
-  width: 60px;
-  min-width: 60px;
-  height: 90px;
-  border-radius: 0.35rem;
-  object-fit: cover;
-  background: #e5e7eb;
-}
-
-.book-cover.fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  color: #4b5563;
+.book-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+  border-color: rgba(129, 140, 248, 0.4);
+  background: #f9fafb;
 }
 
 .book-card-main {
-  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-}
-
-.book-card-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.15rem;
+  margin-bottom: 0.3rem;
 }
 
 .book-title {
   font-size: 0.98rem;
   font-weight: 600;
   color: #111827;
+  margin: 0;
 }
 
 .book-author {
   font-size: 0.85rem;
   color: #6b7280;
-  margin-top: 0.1rem;
-}
-
-.book-badge {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 999px;
-  background: #e5e7eb;
-  color: #374151;
-  white-space: nowrap;
-  align-self: flex-start;
+  margin: 0.1rem 0 0;
 }
 
 .book-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  color: #6b7280;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge-soft {
+  background: #eef2ff;
+  color: #4338ca;
 }
 
 .book-isbn {
@@ -394,40 +470,6 @@ main {
   box-shadow: 0 0 0 100vmax rgba(15, 23, 42, 0.6);
 }
 
-/* === Responsive === */
-
-@media (max-width: 640px) {
-  .app-root {
-    padding: 0.5rem;
-  }
-
-  .app-shell {
-    border-radius: 16px;
-  }
-
-  main {
-    padding: 0.75rem 0.75rem 1rem;
-  }
-
-  .topbar {
-    padding-inline: 0.75rem;
-    gap: 0.5rem;
-  }
-
-  .topbar-nav {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .scan-header {
-    align-items: flex-start;
-  }
-
-  .scanner-video {
-    max-height: 260px;
-  }
-}
-
 /* === Chip filters / sort pills === */
 
 .chip-row {
@@ -437,16 +479,24 @@ main {
   align-items: center;
 }
 
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0 1rem;
+}
+
+/* Single source of truth for chip styles */
 .chip {
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.6);
-  padding: 0.25rem 0.7rem;
-  font-size: 0.78rem;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
   background: #ffffff;
   color: #4b5563;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease,
-    border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .chip:hover {
@@ -455,12 +505,15 @@ main {
   color: #4338ca;
 }
 
-.chip.active {
+/* Active chip style used by LibraryView (.chip-active class) */
+.chip-active {
   background: #4f46e5;
-  border-color: #4f46e5;
   color: #ffffff;
+  border-color: #4f46e5;
   box-shadow: 0 6px 14px rgba(79, 70, 229, 0.4);
 }
+
+/* === Toast banner === */
 
 .toast-banner {
   position: fixed;
@@ -480,29 +533,6 @@ main {
   animation: toast-in 0.2s ease-out;
 }
 
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.75rem 0 1rem;
-}
-
-.chip {
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  padding: 0.25rem 0.75rem;
-  font-size: 0.8rem;
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.chip-active {
-  background: #0f172a;
-  color: #e5e7eb;
-  border-color: #0f172a;
-}
-
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -514,8 +544,36 @@ main {
   }
 }
 
-/* Mobile tweak so chip rows wrap nicely */
+/* === Responsive tweaks === */
+
 @media (max-width: 640px) {
+  .app-root {
+    padding: 0.5rem;
+  }
+
+  .app-shell {
+    border-radius: 16px;
+  }
+
+  main,
+  .app-main {
+    padding: 0.75rem 0.75rem 1rem;
+  }
+
+  .topbar,
+  .app-header {
+    padding-inline: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .scan-header {
+    align-items: flex-start;
+  }
+
+  .scanner-video {
+    max-height: 260px;
+  }
+
   .chip-row {
     gap: 0.3rem;
   }
