@@ -196,54 +196,57 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
     }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    setFormError(null);
+const handleSave = async () => {
+  setSaving(true);
+  setFormError(null);
 
-    try {
-      const trimmedTitle = title.trim();
-      if (!trimmedTitle) {
-        setFormError('Title is required.');
-        setSaving(false);
-        return;
-      }
-
-      const {
-        data: { user },
-        error: userErr,
-      } = await withTimeout(supabase.auth.getUser(), 8000);
-      if (userErr || !user) throw userErr || new Error('Not signed in');
-
-      const payload: any = {
-        user_id: user.id,
-        title: trimmedTitle,
-        author: author.trim() || null,
-        isbn: formIsbn || null,
-      };
-
-      if (pageCount !== '') payload.page_count = Number(pageCount);
-      if (description.trim()) payload.description = description.trim();
-      // Optional: payload.cover_url = `https://covers.openlibrary.org/b/isbn/${formIsbn}-L.jpg`;
-
-      const { data, error } = await supabase
-        .from('books')
-        .insert(payload)
-        .select('*')
-        .single();
-
-      if (error) throw error;
-
-      const newBook = data as Book;
-      setStatus('Book saved to your library.');
-      setFormVisible(false);
-      onBookFound(newBook, formIsbn);
-    } catch (e: any) {
-      console.error(e);
-      setFormError(e?.message || 'Failed to save book.');
-    } finally {
+  try {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setFormError('Title is required.');
       setSaving(false);
+      return;
     }
-  };
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await withTimeout(supabase.auth.getUser(), 8000);
+    if (userErr || !user) throw userErr || new Error('Not signed in');
+
+    const payload: any = {
+      user_id: user.id,
+      title: trimmedTitle,
+      author: author.trim() || null,
+      isbn: formIsbn || null,
+    };
+
+    if (pageCount !== '') payload.page_count = Number(pageCount);
+    if (description.trim()) payload.description = description.trim();
+
+    const { data, error } = await supabase
+      .from('books')
+      .insert(payload)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Supabase insert error', error);
+      throw error;
+    }
+
+    const newBook = data as Book;
+    setStatus('Book saved to your library.');
+    setFormVisible(false);
+    onBookFound(newBook, formIsbn);
+  } catch (e: any) {
+    console.error(e);
+    // Make sure you SEE any backend message:
+    setFormError(e?.message || 'Failed to save book.');
+  } finally {
+    setSaving(false);
+  }
+};
 
   return (
     <div>

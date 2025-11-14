@@ -119,13 +119,32 @@ const App: React.FC = () => {
     setView('detail');
   };
 
-  // ScanView will call this with (book, isbn) when it has or creates a book.
-  // We only care about the book here.
-  const handleBookFoundFromScan = (book: Book | null, _isbn: string) => {
-    if (!book) return;
-    setSelectedBook(book);
-    setView('detail');
-  };
+const handleBookFoundFromScan = (book: Book | null, isbn: string) => {
+  if (!book) {
+    // We scanned something but didn't get a book object back.
+    // For now, just go back to the library or stay on scan.
+    // You can customize this behavior if you want a "manual add" flow here.
+    return;
+  }
+
+  // Ensure this book is present in the books state (insert or update in place)
+  setBooks((prev) => {
+    const idx = prev.findIndex((b) => b.id === book.id);
+    if (idx === -1) {
+      // New book → prepend so it appears at the top
+      return [book, ...prev];
+    } else {
+      // Existing book → update the record
+      const copy = [...prev];
+      copy[idx] = book;
+      return copy;
+    }
+  });
+
+  // Select it and go to detail view
+  setSelectedBook(book);
+  setView('detail');
+};
 
   // This matches BookDetailProps: onLogUpdated(log: ReadingLog | null) => void
   const handleLogUpdated = (updatedLog: ReadingLog | null) => {
