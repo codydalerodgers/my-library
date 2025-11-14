@@ -88,12 +88,10 @@ const App: React.FC = () => {
     return map;
   }, [logs]);
 
-  const onNavigate = (next: 'library' | 'scan' | 'dashboard') => {
-    setView(next);
-    if (next !== 'detail') {
-      setSelectedBook(null);
-    }
-  };
+const onNavigate = (next: 'library' | 'scan' | 'dashboard') => {
+  setView(next);
+  setSelectedBook(null); // always clear selected book when navigating
+};
 
   const onSelectBook = (book: Book) => {
     setSelectedBook(book);

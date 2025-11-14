@@ -12,7 +12,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const codeReader = new BrowserMultiFormatReader();
+    // Use any so we can safely call .reset() without TS complaining
+    const codeReader: any = new BrowserMultiFormatReader();
     let isMounted = true;
 
     (async () => {
@@ -21,14 +22,14 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
         const deviceId = videoInputDevices[0]?.deviceId;
 
         await codeReader.decodeFromVideoDevice(
-          deviceId || null,
+          deviceId ?? undefined, // avoid passing null
           videoRef.current!,
-          (result: Result | undefined, err) => {
+          (result: Result | undefined) => {
             if (!isMounted) return;
             if (result) {
               const text = result.getText();
               onDetected(text);
-              // Optional: stop scanning after first result
+              // stop scanning after first result
               codeReader.reset();
             }
           },
@@ -47,7 +48,11 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
 
   return (
     <div>
-      {error && <div style={{ color: 'red', marginBottom: '0.5rem' }}>{error}</div>}
+      {error && (
+        <div style={{ color: 'red', marginBottom: '0.5rem' }}>
+          {error}
+        </div>
+      )}
       <video
         ref={videoRef}
         style={{
