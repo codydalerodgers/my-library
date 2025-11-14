@@ -119,32 +119,33 @@ const App: React.FC = () => {
     setView('detail');
   };
 
-  const handleBookFoundFromScan = (book: Book | null, isbn: string) => {
-    if (!book) return; // ScanView handles "not found" + creation
+  // ScanView will call this with (book, isbn) when it has or creates a book.
+  // We only care about the book here.
+  const handleBookFoundFromScan = (book: Book | null, _isbn: string) => {
+    if (!book) return;
     setSelectedBook(book);
     setView('detail');
   };
 
-  const handleDetailUpdated = (updatedBook: Book, updatedLog: ReadingLog | null) => {
-    // Update books list
-    setBooks((prev) =>
-      prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)),
-    );
+  // This matches BookDetailProps: onLogUpdated(log: ReadingLog | null) => void
+  const handleLogUpdated = (updatedLog: ReadingLog | null) => {
+    if (!selectedBook) return;
 
-    // Update logs list (insert or replace)
-    if (updatedLog) {
-      setLogs((prev) => {
-        const idx = prev.findIndex((l) => l.id === updatedLog.id);
-        if (idx === -1) {
-          return [...prev, updatedLog];
-        }
-        const copy = [...prev];
-        copy[idx] = updatedLog;
-        return copy;
-      });
+    if (!updatedLog) {
+      // If null, assume log was cleared/deleted for this book
+      setLogs((prev) => prev.filter((l) => l.book_id !== selectedBook.id));
+      return;
     }
 
-    setSelectedBook(updatedBook);
+    setLogs((prev) => {
+      const idx = prev.findIndex((l) => l.id === updatedLog.id);
+      if (idx === -1) {
+        return [...prev, updatedLog];
+      }
+      const copy = [...prev];
+      copy[idx] = updatedLog;
+      return copy;
+    });
   };
 
   const handleSignOut = async () => {
@@ -152,7 +153,9 @@ const App: React.FC = () => {
   };
 
   const selectedLog =
-    selectedBook ? logs.find((l) => l.book_id === selectedBook.id) ?? null : null;
+  selectedBook
+    ? logs.find((l) => l.book_id === selectedBook.id) ?? null
+    : null;
 
   // ------------- RENDER -------------
 
@@ -210,7 +213,11 @@ const App: React.FC = () => {
             </button>
           </nav>
           <div className="topbar-right">
-            <button type="button" className="secondary small" onClick={handleSignOut}>
+            <button
+              type="button"
+              className="secondary small"
+              onClick={handleSignOut}
+            >
               Sign out
             </button>
           </div>
@@ -218,14 +225,15 @@ const App: React.FC = () => {
 
         <main style={{ padding: '1rem' }}>
           {loadingData && (
-            <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>Refreshing library…</p>
+            <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+              Refreshing library…
+            </p>
           )}
 
           {view === 'dashboard' && (
             <Dashboard
               books={books}
               logs={logs}
-              onSelectBook={handleSelectBook}
             />
           )}
 
@@ -244,9 +252,8 @@ const App: React.FC = () => {
           {view === 'detail' && selectedBook && (
             <BookDetail
               book={selectedBook}
-              log={selectedLog}
-              onBack={() => handleNavigate('library')}
-              onUpdated={handleDetailUpdated}
+              initialLog={selectedLog}
+              onLogUpdated={handleLogUpdated}
             />
           )}
 
