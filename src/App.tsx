@@ -119,8 +119,8 @@ const App: React.FC = () => {
     setView('detail');
   };
 
-const handleBookFoundFromScan = (book: Book | null, isbn: string) => {
-  if (!book) {
+const handleBookFoundFromScan = (book: Book | null) => {  if (!book) {
+  
     // We scanned something but didn't get a book object back.
     // For now, just go back to the library or stay on scan.
     // You can customize this behavior if you want a "manual add" flow here.
