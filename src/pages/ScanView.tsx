@@ -6,6 +6,7 @@ import type { Book } from '../types';
 
 interface ScanViewProps {
   onBookFound: (book: Book | null, isbn: string) => void;
+  onBack: () => void;
 }
 
 interface OpenLibraryApiBook {
@@ -31,23 +32,14 @@ async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
   description: string | null;
   coverUrl: string | null;
 } | null> {
-  // Normalize to digits/X
   const digits = isbnRaw.replace(/[^\dX]/gi, '');
 
-  const tryIsbn = async (isbn: string): Promise<{
-    title: string;
-    author: string | null;
-    pageCount: number | null;
-    description: string | null;
-    coverUrl: string | null;
-  } | null> => {
+  const tryIsbn = async (isbn: string) => {
     try {
       const resp = await fetch(
         `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`,
       );
-      if (!resp.ok) {
-        return null;
-      }
+      if (!resp.ok) return null;
 
       const json = (await resp.json()) as Record<string, OpenLibraryApiBook>;
       const key = `ISBN:${isbn}`;
@@ -81,13 +73,13 @@ async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
     }
   };
 
-  // 1) Try the raw digits (often ISBN-13 from barcodes)
+  // 1) Try the raw digits (often ISBN-13)
   const primary = await tryIsbn(digits);
   if (primary) return primary;
 
   // 2) If it's a 13-digit ISBN starting with 978/979, convert to ISBN-10 and try again
   if (digits.length === 13 && (digits.startsWith('978') || digits.startsWith('979'))) {
-    const core = digits.slice(3, 12); // 9 digits
+    const core = digits.slice(3, 12);
     if (/^\d{9}$/.test(core)) {
       let sum = 0;
       for (let i = 0; i < 9; i++) {
@@ -107,11 +99,10 @@ async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
     }
   }
 
-  // Nothing found
   return null;
 }
 
-export const ScanView: React.FC<ScanViewProps> = ({ onBookFound }) => {
+export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -131,7 +122,6 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound }) => {
     setIsProcessing(true);
     setFormError(null);
 
-    // Normalize the barcode to digits (and X for some ISBNs)
     const normalized = code.replace(/[^\dX]/gi, '');
     setLastCode(normalized);
     setStatus('Looking up book in your library...');
@@ -143,7 +133,6 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound }) => {
       } = await supabase.auth.getUser();
       if (userErr || !user) throw userErr || new Error('Not signed in');
 
-      // Check if this ISBN is already in the user's library
       const { data, error } = await supabase
         .from('books')
         .select('*')
@@ -158,7 +147,6 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound }) => {
         setFormVisible(false);
         onBookFound(data as Book, normalized);
       } else {
-        // Not found in your library – try Open Library
         setStatus('Not in your library. Looking up details from Open Library...');
         const meta = await fetchOpenLibraryMetadata(normalized);
 
@@ -211,8 +199,7 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound }) => {
 
       if (pageCount !== '') payload.page_count = Number(pageCount);
       if (description.trim()) payload.description = description.trim();
-
-      // You could also store cover_url here if you want:
+      // You can also store cover_url here if you want:
       // payload.cover_url = `https://covers.openlibrary.org/b/isbn/${formIsbn}-L.jpg`;
 
       const { data, error } = await supabase
@@ -237,11 +224,28 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound }) => {
 
   return (
     <div>
-      <h2>Scan a book</h2>
-      <BarcodeScanner onDetected={handleDetected} />
+      <div className="scan-header">
+        <button
+          type="button"
+          className="secondary small"
+          onClick={onBack}
+        >
+          ← Library
+        </button>
+        <div className="scan-header-text">
+          <h2>Scan a book</h2>
+          <p className="muted">
+            Point your camera at the barcode. We&apos;ll check if it&apos;s already in your library.
+          </p>
+        </div>
+      </div>
+
+      <div className="scan-content">
+        <BarcodeScanner onDetected={handleDetected} />
+      </div>
 
       {lastCode && (
-        <p style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+        <p className="muted" style={{ marginTop: '0.5rem' }}>
           Last barcode / ISBN: <strong>{lastCode}</strong>
         </p>
       )}

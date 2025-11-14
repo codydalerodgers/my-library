@@ -10,19 +10,63 @@ interface BarcodeScannerProps {
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [initialised, setInitialised] = useState(false);
 
+  // Discover cameras
   useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const inputs = await BrowserMultiFormatReader.listVideoInputDevices();
+        if (!mounted) return;
+
+        if (!inputs.length) {
+          setError('No camera found on this device.');
+          return;
+        }
+
+        // Try to pick a back/rear/environment camera first
+        const backIndex = inputs.findIndex((d) =>
+          /back|rear|environment/i.test(d.label),
+        );
+
+        setDevices(inputs);
+        setSelectedIndex(backIndex >= 0 ? backIndex : 0);
+        setInitialised(true);
+      } catch (e: any) {
+        console.error(e);
+        if (mounted) {
+          setError('Unable to access camera devices.');
+        }
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Start scanning whenever selectedIndex or devices change
+  useEffect(() => {
+    if (!initialised || !devices.length || !videoRef.current) return;
+
     const codeReader = new BrowserMultiFormatReader();
     let isMounted = true;
     let handled = false;
 
     (async () => {
       try {
-        const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
-        const deviceId = videoInputDevices[0]?.deviceId;
+        const deviceId = devices[selectedIndex]?.deviceId;
+        if (!deviceId) {
+          setError('Selected camera not available.');
+          return;
+        }
 
         await codeReader.decodeFromVideoDevice(
-          deviceId ?? undefined,
+          deviceId,
           videoRef.current!,
           (result: Result | undefined) => {
             if (!isMounted || handled) return;
@@ -30,45 +74,69 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
               handled = true;
               const text = result.getText();
               onDetected(text);
-              // NOTE: we do NOT call codeReader.reset() here,
-              // since some versions of @zxing/browser don't expose it.
-              // We just ignore any further results.
+              // we don't call reset() (not always present); we just ignore further results
             }
           },
         );
       } catch (e: any) {
         console.error(e);
         if (isMounted) {
-          setError('Unable to access camera. Check permissions and try again.');
+          setError('Unable to start camera. Check permissions and try again.');
         }
       }
     })();
 
     return () => {
-      // mark unmounted so callback stops doing anything
       isMounted = false;
-      // we also don't call reset here to avoid the runtime error
+      try {
+        const stream = videoRef.current?.srcObject as MediaStream | null;
+        stream?.getTracks().forEach((t) => t.stop());
+      } catch {
+        // ignore cleanup errors
+      }
     };
-  }, [onDetected]);
+  }, [devices, selectedIndex, initialised, onDetected]);
+
+  const handleFlipCamera = () => {
+    if (!devices.length) return;
+    setSelectedIndex((prev) => (prev + 1) % devices.length);
+  };
 
   return (
-    <div>
+    <div className="scanner-shell">
+      <div className="scanner-header-row">
+        <span className="muted scanner-label">
+          Camera {devices.length > 1 ? `(${selectedIndex + 1}/${devices.length})` : ''}
+        </span>
+        {devices.length > 1 && (
+          <button
+            type="button"
+            className="secondary small"
+            onClick={handleFlipCamera}
+          >
+            Flip camera
+          </button>
+        )}
+      </div>
+
       {error && (
         <div style={{ color: 'red', marginBottom: '0.5rem' }}>
           {error}
         </div>
       )}
-      <video
-        ref={videoRef}
-        style={{
-          width: '100%',
-          maxHeight: '400px',
-          borderRadius: '0.5rem',
-          background: '#000',
-        }}
-      />
-      <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: '#6b7280' }}>
-        Align the book barcode within the frame.
+
+      <div className="scanner-frame">
+        <video
+          ref={videoRef}
+          className="scanner-video"
+        />
+        <div className="scanner-overlay">
+          <div className="scanner-box" />
+        </div>
+      </div>
+
+      <div className="muted" style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
+        Align the barcode inside the box. The scan will trigger automatically.
       </div>
     </div>
   );
