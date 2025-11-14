@@ -5,7 +5,8 @@ import { supabase } from '../lib/supabaseClient';
 import type { Book } from '../types';
 
 interface ScanViewProps {
-  onBookFound: (book: Book | null, isbn: string) => void;
+  // second param is now a "tag": 'existing' or 'new'
+  onBookFound: (book: Book | null, tag: string) => void;
   onBack: () => void;
 }
 
@@ -21,9 +22,6 @@ interface OpenLibraryApiBook {
   };
 }
 
-/**
- * Generic timeout wrapper for real Promises (like supabase.auth.getUser()).
- */
 async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -43,10 +41,6 @@ async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   });
 }
 
-/**
- * Try fetching book data from Open Library using the API endpoint.
- * First tries the given ISBN, then (if it's a 13-digit ISBN) tries the ISBN-10 equivalent.
- */
 async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
   title: string;
   author: string | null;
@@ -95,18 +89,16 @@ async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
     }
   };
 
-  // 1) Try the raw digits (often ISBN-13)
   const primary = await tryIsbn(digits);
   if (primary) return primary;
 
-  // 2) If it's a 13-digit ISBN starting with 978/979, convert to ISBN-10 and try again
   if (digits.length === 13 && (digits.startsWith('978') || digits.startsWith('979'))) {
     const core = digits.slice(3, 12);
     if (/^\d{9}$/.test(core)) {
       let sum = 0;
       for (let i = 0; i < 9; i++) {
-        const digit = Number(core[i]);
-        sum += digit * (10 - i);
+        const d = Number(core[i]);
+        sum += d * (10 - i);
       }
       const remainder = sum % 11;
       const check = 11 - remainder;
@@ -125,6 +117,7 @@ async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
 }
 
 export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
+  const [showScanner, setShowScanner] = useState(true);
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -139,6 +132,19 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const resetForRescan = () => {
+    setShowScanner(true);
+    setLastCode(null);
+    setStatus(null);
+    setFormVisible(false);
+    setFormIsbn('');
+    setTitle('');
+    setAuthor('');
+    setPageCount('');
+    setDescription('');
+    setFormError(null);
+  };
+
   const handleDetected = async (code: string) => {
     if (isProcessing) return;
     setIsProcessing(true);
@@ -146,17 +152,18 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
 
     const normalized = code.replace(/[^\dX]/gi, '');
     setLastCode(normalized);
+    // Immediately stop camera so it doesn't keep streaming
+    setShowScanner(false);
     setStatus('Looking up book in your library...');
 
     try {
-      // 1) Get current user (with timeout)
       const {
         data: { user },
         error: userErr,
       } = await withTimeout(supabase.auth.getUser(), 8000);
       if (userErr || !user) throw userErr || new Error('Not signed in');
 
-      // 2) Check if book already exists for this user (no timeout wrapper needed here)
+      // Check if this book already exists for this user
       const { data, error } = await supabase
         .from('books')
         .select('*')
@@ -167,10 +174,12 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
       if (error) throw error;
 
       if (data) {
+        // Existing book → go straight to detail via parent
         setStatus('Book already in your library.');
         setFormVisible(false);
         onBookFound(data as Book, normalized);
       } else {
+        // New book → fetch metadata, show confirmation form
         setStatus('Not in your library. Looking up details from Open Library...');
         const meta = await fetchOpenLibraryMetadata(normalized);
 
@@ -196,57 +205,56 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
     }
   };
 
-const handleSave = async () => {
-  setSaving(true);
-  setFormError(null);
+  const handleSave = async () => {
+    setSaving(true);
+    setFormError(null);
 
-  try {
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      setFormError('Title is required.');
+    try {
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle) {
+        setFormError('Title is required.');
+        setSaving(false);
+        return;
+      }
+
+      const {
+        data: { user },
+        error: userErr,
+      } = await withTimeout(supabase.auth.getUser(), 8000);
+      if (userErr || !user) throw userErr || new Error('Not signed in');
+
+      const payload: any = {
+        user_id: user.id,
+        title: trimmedTitle,
+        author: author.trim() || null,
+        isbn: formIsbn || null,
+      };
+
+      if (pageCount !== '') payload.page_count = Number(pageCount);
+      if (description.trim()) payload.description = description.trim();
+      // Optional: payload.cover_url = `https://covers.openlibrary.org/b/isbn/${formIsbn}-L.jpg`;
+
+      const { data, error } = await supabase
+        .from('books')
+        .insert(payload)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+
+      const newBook = data as Book;
+      setStatus('Book saved to your library.');
+      setFormVisible(false);
+
+      // Tell parent this is a NEW book
+      onBookFound(newBook, formIsbn);
+    } catch (e: any) {
+      console.error(e);
+      setFormError(e?.message || 'Failed to save book.');
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const {
-      data: { user },
-      error: userErr,
-    } = await withTimeout(supabase.auth.getUser(), 8000);
-    if (userErr || !user) throw userErr || new Error('Not signed in');
-
-    const payload: any = {
-      user_id: user.id,
-      title: trimmedTitle,
-      author: author.trim() || null,
-      isbn: formIsbn || null,
-    };
-
-    if (pageCount !== '') payload.page_count = Number(pageCount);
-    if (description.trim()) payload.description = description.trim();
-
-    const { data, error } = await supabase
-      .from('books')
-      .insert(payload)
-      .select('*')
-      .single();
-
-    if (error) {
-      console.error('Supabase insert error', error);
-      throw error;
-    }
-
-    const newBook = data as Book;
-    setStatus('Book saved to your library.');
-    setFormVisible(false);
-    onBookFound(newBook, formIsbn);
-  } catch (e: any) {
-    console.error(e);
-    // Make sure you SEE any backend message:
-    setFormError(e?.message || 'Failed to save book.');
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   return (
     <div>
@@ -266,8 +274,15 @@ const handleSave = async () => {
         </div>
       </div>
 
+      {/* Camera only shown while scanning */}
       <div className="scan-content">
-        <BarcodeScanner onDetected={handleDetected} />
+        {showScanner ? (
+          <BarcodeScanner onDetected={handleDetected} />
+        ) : (
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            Camera off. {formVisible ? 'Confirm the details below.' : 'You can scan again if needed.'}
+          </p>
+        )}
       </div>
 
       {lastCode && (
@@ -331,7 +346,7 @@ const handleSave = async () => {
 
           <div className="form-row">
             <label className="label" htmlFor="description">
-              Description
+              Description / notes
             </label>
             <textarea
               id="description"
@@ -342,13 +357,23 @@ const handleSave = async () => {
             />
           </div>
 
-          <button
-            className="primary"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Saving…' : 'Save to library'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <button
+              className="primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? 'Saving…' : 'Save to library'}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={resetForRescan}
+              disabled={saving}
+            >
+              Scan another
+            </button>
+          </div>
 
           {formError && (
             <div style={{ marginTop: '0.5rem', color: 'red' }}>
@@ -356,6 +381,17 @@ const handleSave = async () => {
             </div>
           )}
         </div>
+      )}
+
+      {!formVisible && !showScanner && (
+        <button
+          type="button"
+          className="secondary small"
+          style={{ marginTop: '0.75rem' }}
+          onClick={resetForRescan}
+        >
+          Scan another book
+        </button>
       )}
     </div>
   );

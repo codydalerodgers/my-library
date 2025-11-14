@@ -462,6 +462,35 @@ main {
   box-shadow: 0 6px 14px rgba(79, 70, 229, 0.4);
 }
 
+.toast-banner {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #ffffff;
+  padding: 0.6rem 1.25rem;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(22, 163, 74, 0.4);
+  font-size: 0.85rem;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  animation: toast-in 0.2s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* Mobile tweak so chip rows wrap nicely */
 @media (max-width: 640px) {
   .chip-row {

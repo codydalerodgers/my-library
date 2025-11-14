@@ -1,293 +1,265 @@
 // src/App.tsx
-import React, { useCallback, useEffect, useState } from 'react';
-import { supabase } from './lib/supabaseClient';
+import React, { useEffect, useState } from "react";
+import { supabase } from "./lib/supabaseClient";
 
-import type { Book, ReadingLog } from './types';
-import { AuthPage } from './pages/AuthPage';
-import { Dashboard } from './pages/Dashboard';
-import { LibraryView } from './pages/LibraryView';
-import { ScanView } from './pages/ScanView';
-import { BookDetail } from './pages/BookDetail';
+import { LibraryView } from "./pages/LibraryView";
+import { ScanView } from "./pages/ScanView";
+import { Dashboard } from "./pages/Dashboard";
+import { BookDetail } from "./pages/BookDetail";
 
-type View = 'dashboard' | 'library' | 'scan' | 'detail';
+import type { Book, ReadingLog } from "./types";
 
-const App: React.FC = () => {
-  const [view, setView] = useState<View>('dashboard');
-  const [sessionChecked, setSessionChecked] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+export const App: React.FC = () => {
+  // ===== Global App State =====
+  const [session, setSession] = useState<any>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
 
   const [books, setBooks] = useState<Book[]>([]);
-  const [logs, setLogs] = useState<ReadingLog[]>([]);
-  const [loadingData, setLoadingData] = useState(false);
+  const [readingLogs, setReadingLogs] = useState<ReadingLog[]>([]);
+
+  const [view, setView] = useState<"library" | "scan" | "detail" | "dashboard">(
+    "library"
+  );
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-  const loadData = useCallback(
-    async (uid: string) => {
-      setLoadingData(true);
-      try {
-        const { data: booksData, error: booksError } = await supabase
-          .from('books')
-          .select('*')
-          .eq('user_id', uid)
-          .order('created_at', { ascending: false });
+  // Toast banner (success message)
+  const [banner, setBanner] = useState<string | null>(null);
 
-        if (booksError) throw booksError;
-
-        const { data: logsData, error: logsError } = await supabase
-          .from('reading_logs')
-          .select('*')
-          .eq('user_id', uid);
-
-        if (logsError) throw logsError;
-
-        setBooks(booksData || []);
-        setLogs(logsData || []);
-      } catch (e) {
-        console.error('Error loading data', e);
-      } finally {
-        setLoadingData(false);
-      }
-    },
-    [],
-  );
-
+  // =====================================================================
+  // 1. INITIAL LOGIN SESSION AND DATA LOADING
+  // =====================================================================
   useEffect(() => {
-    let mounted = true;
+    const init = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    (async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const session = data.session;
+      setSession(session);
+      setLoadingSession(false);
 
-        if (!mounted) return;
-
-        if (session?.user) {
-          const uid = session.user.id;
-          setUserId(uid);
-          await loadData(uid);
-        } else {
-          setUserId(null);
-        }
-      } catch (e) {
-        console.error('Error getting session', e);
-        setUserId(null);
-      } finally {
-        if (mounted) {
-          setSessionChecked(true);
-        }
+      if (session?.user?.id) {
+        await loadLibraryData(session.user.id);
       }
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          const uid = session?.user?.id;
-          if (uid) {
-            setUserId(uid);
-            await loadData(uid);
-          }
-        }
-
-        if (event === 'SIGNED_OUT') {
-          setUserId(null);
-          setBooks([]);
-          setLogs([]);
-          setSelectedBook(null);
-          setView('dashboard');
-        }
-      },
-    );
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
     };
-  }, [loadData]);
 
-  const handleNavigate = (next: View) => {
-    setView(next);
-    if (next !== 'detail') {
-      setSelectedBook(null);
+    init();
+
+    supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (newSession?.user?.id) {
+        loadLibraryData(newSession.user.id);
+      }
+    });
+  }, []);
+
+  const loadLibraryData = async (userId: string) => {
+    // Load Books
+    const { data: booksData, error: booksErr } = await supabase
+      .from("books")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (!booksErr && booksData) {
+      setBooks(booksData);
+    }
+
+    // Load Reading Logs
+    const { data: logsData, error: logsErr } = await supabase
+      .from("reading_logs")
+      .select("*")
+      .eq("user_id", userId);
+
+    if (!logsErr && logsData) {
+      setReadingLogs(logsData);
     }
   };
 
-  const handleSelectBook = (book: Book) => {
-    setSelectedBook(book);
-    setView('detail');
-  };
+  // =====================================================================
+  // 2. SCAN HANDLER (CALLED BY ScanView)
+  // =====================================================================
+  const handleBookFoundFromScan = (book: Book | null, _isbn: string) => {
+    if (!book) return;
 
-const handleBookFoundFromScan = (book: Book | null) => {  if (!book) {
-  
-    // We scanned something but didn't get a book object back.
-    // For now, just go back to the library or stay on scan.
-    // You can customize this behavior if you want a "manual add" flow here.
-    return;
-  }
+    // Does book already exist in local state?
+    const exists = books.some((b) => b.id === book.id);
 
-  // Ensure this book is present in the books state (insert or update in place)
-  setBooks((prev) => {
-    const idx = prev.findIndex((b) => b.id === book.id);
-    if (idx === -1) {
-      // New book → prepend so it appears at the top
-      return [book, ...prev];
+    if (exists) {
+      // Existing book → open Detail view
+      setSelectedBook(book);
+      setView("detail");
     } else {
-      // Existing book → update the record
-      const copy = [...prev];
-      copy[idx] = book;
-      return copy;
+      // New book → insert in local list, return to Library, show toast banner
+      setBooks((prev) => [book, ...prev]);
+      setSelectedBook(book);
+      setView("library");
+
+      setBanner("Book successfully added!");
+      setTimeout(() => setBanner(null), 2500);
     }
-  });
+  };
 
-  // Select it and go to detail view
-  setSelectedBook(book);
-  setView('detail');
-};
-
-  // This matches BookDetailProps: onLogUpdated(log: ReadingLog | null) => void
+  // =====================================================================
+  // 3. BOOK DETAIL UPDATES (NOTES, STATUS, DATES, etc.)
+  // =====================================================================
   const handleLogUpdated = (updatedLog: ReadingLog | null) => {
     if (!selectedBook) return;
 
-    if (!updatedLog) {
-      // If null, assume log was cleared/deleted for this book
-      setLogs((prev) => prev.filter((l) => l.book_id !== selectedBook.id));
-      return;
-    }
-
-    setLogs((prev) => {
-      const idx = prev.findIndex((l) => l.id === updatedLog.id);
+    setReadingLogs((prev) => {
+      const idx = prev.findIndex(
+        (l) => l.book_id === selectedBook.id && l.user_id === selectedBook.user_id
+      );
       if (idx === -1) {
-        return [...prev, updatedLog];
+        return updatedLog ? [...prev, updatedLog] : prev;
+      } else {
+        const copy = [...prev];
+        if (updatedLog) copy[idx] = updatedLog;
+        return copy;
       }
-      const copy = [...prev];
-      copy[idx] = updatedLog;
-      return copy;
     });
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
+  // =====================================================================
+  // 4. LOGIN / LOGOUT HANDLERS
+  // =====================================================================
+  const signIn = async (email: string) => {
+    await supabase.auth.signInWithOtp({ email });
   };
 
-  const selectedLog =
-  selectedBook
-    ? logs.find((l) => l.book_id === selectedBook.id) ?? null
-    : null;
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setView("library");
+    setBooks([]);
+    setReadingLogs([]);
+  };
 
-  // ------------- RENDER -------------
+  // =====================================================================
+  // 5. MAIN UI
+  // =====================================================================
 
-  if (!sessionChecked) {
+  if (loadingSession) {
+    return <div className="loading-screen">Loading...</div>;
+  }
+
+  if (!session) {
     return (
-      <div className="app-root">
-        <div className="app-shell">
-          <main style={{ padding: '1rem' }}>Loading…</main>
-        </div>
+      <div className="auth-screen">
+        <h2>Sign In</h2>
+        <p>Enter your email to receive a login link.</p>
+
+        <EmailLoginForm onSubmit={signIn} />
+
+        <p className="muted">You’ll receive a magic link to sign in.</p>
       </div>
     );
   }
 
-  if (!userId) {
-    // Not signed in, show auth page
-    return (
-      <div className="app-root">
-        <div className="app-shell">
-          <main style={{ padding: '1rem' }}>
-            <AuthPage />
-          </main>
-        </div>
-      </div>
-    );
-  }
-
+  // ACTUAL LOGGED-IN VIEW
   return (
-    <div className="app-root">
-      <div className="app-shell">
-        <header className="topbar">
-          <div className="topbar-left">
-            <span className="app-title">My Library</span>
-          </div>
-          <nav className="topbar-nav">
-            <button
-              type="button"
-              className={`nav-button ${view === 'dashboard' ? 'active' : ''}`}
-              onClick={() => handleNavigate('dashboard')}
-            >
-              Dashboard
-            </button>
-            <button
-              type="button"
-              className={`nav-button ${view === 'library' ? 'active' : ''}`}
-              onClick={() => handleNavigate('library')}
-            >
-              Library
-            </button>
-            <button
-              type="button"
-              className={`nav-button ${view === 'scan' ? 'active' : ''}`}
-              onClick={() => handleNavigate('scan')}
-            >
-              Scan
-            </button>
-          </nav>
-          <div className="topbar-right">
-            <button
-              type="button"
-              className="secondary small"
-              onClick={handleSignOut}
-            >
-              Sign out
-            </button>
-          </div>
-        </header>
+    <div className="app-shell">
+      {/* =======================
+          SUCCESS BANNER
+      ======================== */}
+      {banner && <div className="toast-banner">{banner}</div>}
 
-        <main style={{ padding: '1rem' }}>
-          {loadingData && (
-            <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-              Refreshing library…
-            </p>
-          )}
+      {/* =======================
+          HEADER NAVIGATION
+      ======================== */}
+      <header className="app-header">
+        <button
+          className={`nav-btn ${view === "library" ? "active" : ""}`}
+          onClick={() => setView("library")}
+        >
+          Library
+        </button>
+        <button
+          className={`nav-btn ${view === "scan" ? "active" : ""}`}
+          onClick={() => setView("scan")}
+        >
+          Scan
+        </button>
+        <button
+          className={`nav-btn ${view === "dashboard" ? "active" : ""}`}
+          onClick={() => setView("dashboard")}
+        >
+          Dashboard
+        </button>
 
-          {view === 'dashboard' && (
-            <Dashboard
-              books={books}
-              logs={logs}
-            />
-          )}
+        <button className="nav-btn small red" onClick={signOut}>
+          Sign out
+        </button>
+      </header>
 
-          {view === 'library' && (
-            <LibraryView
-              books={books}
-              logs={logs}
-              onSelectBook={handleSelectBook}
-            />
-          )}
+      {/* =======================
+          MAIN VIEW
+      ======================== */}
+      <main className="app-main">
+        {view === "library" && (
+          <LibraryView
+            books={books}
+            logs={readingLogs}
+            onSelectBook={(book) => {
+              setSelectedBook(book);
+              setView("detail");
+            }}
+          />
+        )}
 
-          {view === 'scan' && (
-            <ScanView
-              onBookFound={handleBookFoundFromScan}
-              onBack={() => handleNavigate('library')}
-            />
-          )}
+        {view === "scan" && (
+          <ScanView
+            onBookFound={handleBookFoundFromScan}
+            onBack={() => setView("library")}
+          />
+        )}
 
-          {view === 'detail' && selectedBook && (
-            <BookDetail
-              book={selectedBook}
-              initialLog={selectedLog}
-              onLogUpdated={handleLogUpdated}
-            />
-          )}
+        {view === "detail" && selectedBook && (
+          <BookDetail
+            book={selectedBook}
+            initialLog={
+              readingLogs.find(
+                (l) =>
+                  l.book_id === selectedBook.id &&
+                  l.user_id === selectedBook.user_id
+              ) ?? null
+            }
+            onLogUpdated={handleLogUpdated}
+          />
+        )}
 
-          {view === 'detail' && !selectedBook && (
-            <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-              No book selected.
-            </p>
-          )}
-        </main>
-      </div>
+        {view === "dashboard" && (
+          <Dashboard books={books} logs={readingLogs} />
+        )}
+      </main>
     </div>
   );
 };
 
-export default App;
+// =====================================================================
+// SIMPLE EMAIL LOGIN FORM (so App.tsx is self-contained)
+// =====================================================================
+const EmailLoginForm: React.FC<{ onSubmit: (email: string) => void }> = ({
+  onSubmit,
+}) => {
+  const [email, setEmail] = useState("");
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(email);
+      }}
+    >
+      <input
+        type="email"
+        className="input"
+        placeholder="you@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <button className="primary" type="submit">
+        Send Magic Link
+      </button>
+    </form>
+  );
+};
