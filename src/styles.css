@@ -480,6 +480,29 @@ main {
   animation: toast-in 0.2s ease-out;
 }
 
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.chip {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.chip-active {
+  background: #0f172a;
+  color: #e5e7eb;
+  border-color: #0f172a;
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;

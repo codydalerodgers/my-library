@@ -1,7 +1,6 @@
 // src/pages/LibraryView.tsx
 import React, { useMemo, useState } from 'react';
-import type { Book, ReadingLog, BookStatus } from '../types';
-import { BookCard } from '../components/BookCard';
+import type { Book, ReadingLog } from '../types';
 
 interface LibraryViewProps {
   books: Book[];
@@ -9,224 +8,177 @@ interface LibraryViewProps {
   onSelectBook: (book: Book) => void;
 }
 
-type SortBy = 'title' | 'author' | 'created_at' | 'rating';
-type SortDir = 'asc' | 'desc';
-type StatusFilter = 'all' | 'favorite' | BookStatus;
+type Filter = 'all' | 'reading' | 'finished' | 'unread' | 'recent';
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   books,
   logs,
   onSelectBook,
 }) => {
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [sortBy, setSortBy] = useState<SortBy>('title');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
 
-  // Map book_id -> latest log (by updated_at)
-  const logsByBook = useMemo(() => {
-    const map = new Map<string, ReadingLog>();
-    for (const log of logs) {
-      const existing = map.get(log.book_id);
-      if (!existing) {
-        map.set(log.book_id, log);
-      } else {
-        if (new Date(log.updated_at) > new Date(existing.updated_at)) {
-          map.set(log.book_id, log);
-        }
-      }
-    }
-    return map;
-  }, [logs]);
+  const getLogForBook = (book: Book): ReadingLog | undefined =>
+    logs.find((l) => l.book_id === book.id && l.user_id === book.user_id);
 
-  const booksWithMeta = useMemo(
-    () =>
-      books.map((book) => {
-        const log = logsByBook.get(book.id) ?? null;
-        const status: BookStatus | null = log?.status ?? null;
-        const rating: number | null = log?.rating ?? null;
-        const isFavorite = (rating ?? 0) >= 4;
-        return { book, log, status, rating, isFavorite };
-      }),
-    [books, logsByBook],
-  );
-
-  const filteredAndSorted = useMemo(() => {
-    let list = booksWithMeta;
+  const filteredBooks = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let result = [...books];
 
     // Search filter
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter(({ book }) => {
-        const t = (book.title || '').toLowerCase();
-        const a = (book.author || '').toLowerCase();
-        return t.includes(q) || a.includes(q);
+    if (q) {
+      result = result.filter((b) => {
+        const haystack = `${b.title ?? ''} ${b.author ?? ''} ${b.isbn ?? ''}`
+          .toLowerCase()
+          .trim();
+        return haystack.includes(q);
       });
     }
 
-    // Status filter
-    if (statusFilter === 'favorite') {
-      list = list.filter(({ isFavorite }) => isFavorite);
-    } else if (statusFilter !== 'all') {
-      list = list.filter(({ status }) => status === statusFilter);
+    // Status filters
+    if (filter !== 'all' && filter !== 'recent') {
+      result = result.filter((b) => {
+        const log = getLogForBook(b);
+
+        if (filter === 'reading') {
+          return log?.status === 'reading';
+        }
+
+        if (filter === 'finished') {
+          return log?.status === 'finished';
+        }
+
+        if (filter === 'unread') {
+          // Unread = no log OR status not reading/finished
+          if (!log) return true;
+          return log.status !== 'reading' && log.status !== 'finished';
+        }
+
+        return true;
+      });
     }
 
-    // Sort
-    list = [...list].sort((a, b) => {
-      let cmp = 0;
-
-      if (sortBy === 'title') {
-        const at = (a.book.title || '').toLowerCase();
-        const bt = (b.book.title || '').toLowerCase();
-        cmp = at.localeCompare(bt);
-      } else if (sortBy === 'author') {
-        const aa = (a.book.author || '').toLowerCase();
-        const ba = (b.book.author || '').toLowerCase();
-        cmp = aa.localeCompare(ba);
-      } else if (sortBy === 'created_at') {
-        const ad = new Date(a.book.created_at).getTime();
-        const bd = new Date(b.book.created_at).getTime();
-        cmp = ad - bd;
-      } else if (sortBy === 'rating') {
-        const ar = a.rating ?? 0;
-        const br = b.rating ?? 0;
-        cmp = ar - br;
-      }
-
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-
-    return list;
-  }, [booksWithMeta, search, statusFilter, sortBy, sortDir]);
-
-  const totalCount = books.length;
-  const filteredCount = filteredAndSorted.length;
-
-  const toggleSort = (field: SortBy) => {
-    if (sortBy === field) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    // Sorting
+    if (filter === 'recent') {
+      // Recently added: newest created_at first
+      result.sort((a, b) => {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return db - da;
+      });
     } else {
-      setSortBy(field);
-      setSortDir('asc');
+      // Default: sort A–Z by title
+      result.sort((a, b) => {
+        const at = (a.title ?? '').toLowerCase();
+        const bt = (b.title ?? '').toLowerCase();
+        return at.localeCompare(bt);
+      });
     }
-  };
+
+    return result;
+  }, [books, logs, filter, query]);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'baseline' }}>
-        <h2>Your library</h2>
-        <span className="muted" style={{ fontSize: '0.8rem' }}>
-          {filteredCount} / {totalCount} books
-        </span>
+    <div className="library-view">
+      <div className="library-header">
+        <div>
+          <h2>Your library</h2>
+          <p className="muted">
+            {books.length === 0
+              ? 'Scan a book to get started.'
+              : `${books.length} book${books.length === 1 ? '' : 's'} in your collection`}
+          </p>
+        </div>
+
+        <div className="library-controls">
+          <input
+            className="input"
+            type="search"
+            placeholder="Search by title, author, or ISBN"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
       </div>
 
-      {/* Search */}
-      <div style={{ marginBottom: '0.5rem' }}>
-        <input
-          className="input"
-          placeholder="Search by title or author"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      {/* Status chips */}
-      <div className="chip-row">
+      <div className="filter-row">
         <button
           type="button"
-          className={`chip ${statusFilter === 'all' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('all')}
+          className={`chip ${filter === 'all' ? 'chip-active' : ''}`}
+          onClick={() => setFilter('all')}
         >
           All
         </button>
         <button
           type="button"
-          className={`chip ${statusFilter === 'to_read' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('to_read')}
-        >
-          To read
-        </button>
-        <button
-          type="button"
-          className={`chip ${statusFilter === 'reading' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('reading')}
+          className={`chip ${filter === 'reading' ? 'chip-active' : ''}`}
+          onClick={() => setFilter('reading')}
         >
           Reading
         </button>
         <button
           type="button"
-          className={`chip ${statusFilter === 'finished' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('finished')}
+          className={`chip ${filter === 'finished' ? 'chip-active' : ''}`}
+          onClick={() => setFilter('finished')}
         >
           Finished
         </button>
         <button
           type="button"
-          className={`chip ${statusFilter === 'favorite' ? 'active' : ''}`}
-          onClick={() => setStatusFilter('favorite')}
+          className={`chip ${filter === 'unread' ? 'chip-active' : ''}`}
+          onClick={() => setFilter('unread')}
         >
-          ★ Favorites
+          Unread
+        </button>
+        <button
+          type="button"
+          className={`chip ${filter === 'recent' ? 'chip-active' : ''}`}
+          onClick={() => setFilter('recent')}
+        >
+          Recently added
         </button>
       </div>
 
-      {/* Sort chips */}
-      <div className="chip-row" style={{ marginTop: '0.35rem', marginBottom: '0.5rem' }}>
-        <span className="muted" style={{ fontSize: '0.75rem' }}>
-          Sort:
-        </span>
-        <button
-          type="button"
-          className={`chip ${sortBy === 'title' ? 'active' : ''}`}
-          onClick={() => toggleSort('title')}
-        >
-          Title {sortBy === 'title' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-        </button>
-        <button
-          type="button"
-          className={`chip ${sortBy === 'author' ? 'active' : ''}`}
-          onClick={() => toggleSort('author')}
-        >
-          Author {sortBy === 'author' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-        </button>
-        <button
-          type="button"
-          className={`chip ${sortBy === 'created_at' ? 'active' : ''}`}
-          onClick={() => toggleSort('created_at')}
-        >
-          Date added {sortBy === 'created_at' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-        </button>
-        <button
-          type="button"
-          className={`chip ${sortBy === 'rating' ? 'active' : ''}`}
-          onClick={() => toggleSort('rating')}
-        >
-          Rating {sortBy === 'rating' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-        </button>
-      </div>
+      <div className="book-grid">
+        {filteredBooks.length === 0 ? (
+          <p className="muted" style={{ marginTop: '1rem' }}>
+            No books match this view yet.
+          </p>
+        ) : (
+          filteredBooks.map((book) => {
+            const log = getLogForBook(book);
 
-      {/* List */}
-      {filteredAndSorted.length === 0 ? (
-        <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-          No books match your filters yet.
-        </p>
-      ) : (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-          }}
-        >
-          {filteredAndSorted.map(({ book, log }) => (
-            <BookCard
-              key={book.id}
-              book={book}
-              log={log}
-              onClick={() => onSelectBook(book)}
-            />
-          ))}
-        </div>
-      )}
+            let statusLabel = 'Unread';
+            if (log) {
+              if (log.status === 'finished') statusLabel = 'Finished';
+              else if (log.status === 'reading') statusLabel = 'Reading';
+              else statusLabel = 'Unread';
+            }
+
+            return (
+              <button
+                key={book.id}
+                type="button"
+                className="book-card"
+                onClick={() => onSelectBook(book)}
+              >
+                <div className="book-card-main">
+                  <h3 className="book-title">{book.title}</h3>
+                  {book.author && (
+                    <p className="book-author muted">{book.author}</p>
+                  )}
+                </div>
+                <div className="book-card-meta">
+                  {book.isbn && (
+                    <span className="badge">ISBN {book.isbn}</span>
+                  )}
+                  <span className="badge badge-soft">{statusLabel}</span>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 };
