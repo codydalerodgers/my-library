@@ -1,200 +1,261 @@
 // src/App.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from './lib/supabaseClient';
+
+import type { Book, ReadingLog } from './types';
 import { AuthPage } from './pages/AuthPage';
-import { Navbar } from './components/Navbar';
 import { Dashboard } from './pages/Dashboard';
 import { LibraryView } from './pages/LibraryView';
 import { ScanView } from './pages/ScanView';
 import { BookDetail } from './pages/BookDetail';
-import type { Book, ReadingLog } from './types';
 
 type View = 'dashboard' | 'library' | 'scan' | 'detail';
 
 const App: React.FC = () => {
-  const [session, setSession] = useState<Awaited<
-    ReturnType<typeof supabase.auth.getSession>
-  >['data']['session'] | null>(null);
+  const [view, setView] = useState<View>('dashboard');
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [books, setBooks] = useState<Book[]>([]);
   const [logs, setLogs] = useState<ReadingLog[]>([]);
-  const [view, setView] = useState<View>('library');
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
 
-  // Fetch auth session on load
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+
+  const loadData = useCallback(
+    async (uid: string) => {
+      setLoadingData(true);
+      try {
+        const { data: booksData, error: booksError } = await supabase
+          .from('books')
+          .select('*')
+          .eq('user_id', uid)
+          .order('created_at', { ascending: false });
+
+        if (booksError) throw booksError;
+
+        const { data: logsData, error: logsError } = await supabase
+          .from('reading_logs')
+          .select('*')
+          .eq('user_id', uid);
+
+        if (logsError) throw logsError;
+
+        setBooks(booksData || []);
+        setLogs(logsData || []);
+      } catch (e) {
+        console.error('Error loading data', e);
+      } finally {
+        setLoadingData(false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setSession(session);
-      setUserEmail(session?.user.email ?? null);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data.session;
+
+        if (!mounted) return;
+
+        if (session?.user) {
+          const uid = session.user.id;
+          setUserId(uid);
+          await loadData(uid);
+        } else {
+          setUserId(null);
+        }
+      } catch (e) {
+        console.error('Error getting session', e);
+        setUserId(null);
+      } finally {
+        if (mounted) {
+          setSessionChecked(true);
+        }
+      }
     })();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUserEmail(session?.user.email ?? null);
-    });
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          const uid = session?.user?.id;
+          if (uid) {
+            setUserId(uid);
+            await loadData(uid);
+          }
+        }
+
+        if (event === 'SIGNED_OUT') {
+          setUserId(null);
+          setBooks([]);
+          setLogs([]);
+          setSelectedBook(null);
+          setView('dashboard');
+        }
+      },
+    );
 
     return () => {
-      listener.subscription.unsubscribe();
+      mounted = false;
+      sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [loadData]);
 
-  // Fetch books + logs when session present
-  useEffect(() => {
-    if (!session) return;
+  const handleNavigate = (next: View) => {
+    setView(next);
+    if (next !== 'detail') {
+      setSelectedBook(null);
+    }
+  };
 
-    const fetchData = async () => {
-      setLoadingData(true);
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
-      if (userErr || !user) {
-        setLoadingData(false);
-        return;
-      }
-
-      const { data: bookData } = await supabase
-        .from('books')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      const { data: logData } = await supabase
-        .from('reading_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      setBooks((bookData ?? []) as Book[]);
-      setLogs((logData ?? []) as ReadingLog[]);
-      setLoadingData(false);
-    };
-
-    fetchData();
-  }, [session]);
-
-  const logsByBookId = useMemo(() => {
-    const map = new Map<string, ReadingLog>();
-    logs.forEach(l => {
-      if (!map.has(l.book_id)) {
-        map.set(l.book_id, l);
-      }
-    });
-    return map;
-  }, [logs]);
-
-const onNavigate = (next: 'library' | 'scan' | 'dashboard') => {
-  setView(next);
-  setSelectedBook(null); // always clear selected book when navigating
-};
-
-  const onSelectBook = (book: Book) => {
+  const handleSelectBook = (book: Book) => {
     setSelectedBook(book);
     setView('detail');
   };
 
-  const onBookFoundFromScan = (book: Book | null, isbn: string) => {
-    if (book) {
-      setSelectedBook(book);
-      setView('detail');
-    } else {
-      // Pre-fill a minimal "add book" form
-      const title = window.prompt('Book not found. Enter title:', '');
-      if (!title) return;
-      const author = window.prompt('Author (optional):', '');
-      (async () => {
-        const {
-          data: { user },
-          error: userErr,
-        } = await supabase.auth.getUser();
-        if (userErr || !user) return;
-
-        const { data, error } = await supabase
-          .from('books')
-          .insert({
-            user_id: user.id,
-            title,
-            author: author || null,
-            isbn,
-          })
-          .select('*')
-          .single();
-
-        if (!error && data) {
-          const newBook = data as Book;
-          setBooks(prev => [newBook, ...prev]);
-          setSelectedBook(newBook);
-          setView('detail');
-        }
-      })();
-    }
+  const handleBookFoundFromScan = (book: Book | null, isbn: string) => {
+    if (!book) return; // ScanView handles "not found" + creation
+    setSelectedBook(book);
+    setView('detail');
   };
 
-  const handleLogUpdated = (log: ReadingLog | null) => {
-    if (!log) return;
-    setLogs(prev => {
-      const others = prev.filter(l => l.id !== log.id);
-      return [log, ...others];
-    });
+  const handleDetailUpdated = (updatedBook: Book, updatedLog: ReadingLog | null) => {
+    // Update books list
+    setBooks((prev) =>
+      prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)),
+    );
+
+    // Update logs list (insert or replace)
+    if (updatedLog) {
+      setLogs((prev) => {
+        const idx = prev.findIndex((l) => l.id === updatedLog.id);
+        if (idx === -1) {
+          return [...prev, updatedLog];
+        }
+        const copy = [...prev];
+        copy[idx] = updatedLog;
+        return copy;
+      });
+    }
+
+    setSelectedBook(updatedBook);
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setSession(null);
-    setBooks([]);
-    setLogs([]);
   };
 
-  if (!session) {
+  const selectedLog =
+    selectedBook ? logs.find((l) => l.book_id === selectedBook.id) ?? null : null;
+
+  // ------------- RENDER -------------
+
+  if (!sessionChecked) {
     return (
       <div className="app-root">
-        <AuthPage />
+        <div className="app-shell">
+          <main style={{ padding: '1rem' }}>Loading…</main>
+        </div>
+      </div>
+    );
+  }
+
+  if (!userId) {
+    // Not signed in, show auth page
+    return (
+      <div className="app-root">
+        <div className="app-shell">
+          <main style={{ padding: '1rem' }}>
+            <AuthPage />
+          </main>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="app-root">
-      <div className="app-container">
-        <Navbar
-          onNavigate={onNavigate}
-          currentView={view}
-          onSignOut={handleSignOut}
-          userEmail={userEmail}
-        />
+      <div className="app-shell">
+        <header className="topbar">
+          <div className="topbar-left">
+            <span className="app-title">My Library</span>
+          </div>
+          <nav className="topbar-nav">
+            <button
+              type="button"
+              className={`nav-button ${view === 'dashboard' ? 'active' : ''}`}
+              onClick={() => handleNavigate('dashboard')}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              className={`nav-button ${view === 'library' ? 'active' : ''}`}
+              onClick={() => handleNavigate('library')}
+            >
+              Library
+            </button>
+            <button
+              type="button"
+              className={`nav-button ${view === 'scan' ? 'active' : ''}`}
+              onClick={() => handleNavigate('scan')}
+            >
+              Scan
+            </button>
+          </nav>
+          <div className="topbar-right">
+            <button type="button" className="secondary small" onClick={handleSignOut}>
+              Sign out
+            </button>
+          </div>
+        </header>
 
-        {loadingData && (
-          <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>Loading your library…</p>
-        )}
+        <main style={{ padding: '1rem' }}>
+          {loadingData && (
+            <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>Refreshing library…</p>
+          )}
 
-        {!loadingData && view === 'dashboard' && (
-          <Dashboard books={books} logs={logs} />
-        )}
+          {view === 'dashboard' && (
+            <Dashboard
+              books={books}
+              logs={logs}
+              onSelectBook={handleSelectBook}
+            />
+          )}
 
-        {!loadingData && view === 'library' && (
-          <LibraryView
-            books={books}
-            logs={logs}
-            onSelectBook={onSelectBook}
-          />
-        )}
+          {view === 'library' && (
+            <LibraryView
+              books={books}
+              logs={logs}
+              onSelectBook={handleSelectBook}
+            />
+          )}
 
-        {!loadingData && view === 'scan' && (
-          <ScanView onBookFound={onBookFoundFromScan} />
-        )}
+          {view === 'scan' && (
+            <ScanView onBookFound={handleBookFoundFromScan} />
+          )}
 
-        {!loadingData && view === 'detail' && selectedBook && (
-          <BookDetail
-            book={selectedBook}
-            initialLog={logsByBookId.get(selectedBook.id) ?? null}
-            onLogUpdated={handleLogUpdated}
-          />
-        )}
+          {view === 'detail' && selectedBook && (
+            <BookDetail
+              book={selectedBook}
+              log={selectedLog}
+              onBack={() => handleNavigate('library')}
+              onUpdated={handleDetailUpdated}
+            />
+          )}
+
+          {view === 'detail' && !selectedBook && (
+            <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+              No book selected.
+            </p>
+          )}
+        </main>
       </div>
     </div>
   );
