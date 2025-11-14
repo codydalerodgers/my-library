@@ -16,11 +16,22 @@ export interface ReadingLog {
   id: string;
   user_id: string;
   book_id: string;
-  status: BookStatus;
-  date_started: string | null;
-  date_finished: string | null;
+
+  // Include all valid statuses
+  status:
+    | 'not_started'
+    | 'to_read'
+    | 'reading'
+    | 'finished'
+    | 'paused'
+    | 'abandoned';
+
   rating: number | null;
-  review: string | null;
-  created_at: string;
-  updated_at: string;
+
+  started_at?: string | null;
+  finished_at?: string | null;
+  notes?: string | null;
+
+  created_at?: string;
+  updated_at?: string;
 }

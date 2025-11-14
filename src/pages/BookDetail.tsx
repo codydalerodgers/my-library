@@ -1,6 +1,5 @@
-// src/pages/BookDetail.tsx
 import React, { useEffect, useState } from 'react';
-import type { Book, ReadingLog, BookStatus } from '../types';
+import type { Book, ReadingLog } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
 interface BookDetailProps {
@@ -14,163 +13,265 @@ export const BookDetail: React.FC<BookDetailProps> = ({
   initialLog,
   onLogUpdated,
 }) => {
-  const [log, setLog] = useState<ReadingLog | null>(initialLog);
-  const [status, setStatus] = useState<BookStatus>(initialLog?.status ?? 'to_read');
-  const [dateStarted, setDateStarted] = useState<string>(initialLog?.date_started ?? '');
-  const [dateFinished, setDateFinished] = useState<string>(initialLog?.date_finished ?? '');
-  const [rating, setRating] = useState<number | ''>(initialLog?.rating ?? '');
-  const [review, setReview] = useState<string>(initialLog?.review ?? '');
+  const [status, setStatus] = useState<string>(
+    initialLog?.status ?? 'not_started',
+  );
+  const [rating, setRating] = useState<number | null>(
+    initialLog?.rating ?? null,
+  );
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const [startedAt, setStartedAt] = useState<string>(
+    initialLog?.started_at ? initialLog.started_at.slice(0, 10) : '',
+  );
+  const [finishedAt, setFinishedAt] = useState<string>(
+    initialLog?.finished_at ? initialLog.finished_at.slice(0, 10) : '',
+  );
+  const [notes, setNotes] = useState<string>(initialLog?.notes ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLog(initialLog);
-    setStatus(initialLog?.status ?? 'to_read');
-    setDateStarted(initialLog?.date_started ?? '');
-    setDateFinished(initialLog?.date_finished ?? '');
-    setRating(initialLog?.rating ?? '');
-    setReview(initialLog?.review ?? '');
+    // If initialLog changes (e.g. from an import or another save), sync up.
+    setStatus(initialLog?.status ?? 'not_started');
+    setRating(initialLog?.rating ?? null);
+    setStartedAt(initialLog?.started_at ? initialLog.started_at.slice(0, 10) : '');
+    setFinishedAt(initialLog?.finished_at ? initialLog.finished_at.slice(0, 10) : '');
+    setNotes(initialLog?.notes ?? '');
   }, [initialLog]);
 
-  const saveLog = async () => {
+  const handleStarClick = (value: number) => {
+    if (rating === value) {
+      // Toggle off if clicking the same star
+      setRating(null);
+    } else {
+      setRating(value);
+    }
+  };
+
+  const handleSave = async () => {
     setSaving(true);
     setError(null);
 
     try {
-      const logPayload: Partial<ReadingLog> = {
-        status,
-        date_started: dateStarted || null,
-        date_finished: dateFinished || null,
-        rating: rating === '' ? null : Number(rating),
-        review: review || null,
-      };
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      let resultLog: ReadingLog;
-      if (log) {
-        const { data, error } = await supabase
-          .from('reading_logs')
-          .update(logPayload)
-          .eq('id', log.id)
-          .select('*')
-          .single();
-        if (error) throw error;
-        resultLog = data as ReadingLog;
-      } else {
-        const {
-          data: { user },
-          error: userErr,
-        } = await supabase.auth.getUser();
-
-        if (userErr || !user) throw userErr || new Error('No user');
-
-        const { data, error } = await supabase
-          .from('reading_logs')
-          .insert({
-            user_id: user.id,
-            book_id: book.id,
-            ...logPayload,
-          })
-          .select('*')
-          .single();
-        if (error) throw error;
-        resultLog = data as ReadingLog;
+      if (userError || !user) {
+        setError('You must be signed in to save a reading log.');
+        setSaving(false);
+        return;
       }
 
-      setLog(resultLog);
-      onLogUpdated(resultLog);
-    } catch (e: any) {
-      console.error(e);
-      setError(e.message || 'Failed to save reading log');
+      const payload = {
+        user_id: user.id,
+        book_id: book.id,
+        status,
+        rating,
+        started_at: startedAt || null,
+        finished_at: finishedAt || null,
+        notes: notes.trim() || null,
+      };
+
+      // Upsert reading log based on (user_id, book_id)
+      const { data, error: upsertError } = await supabase
+        .from('reading_logs')
+        .upsert(payload, { onConflict: 'user_id,book_id' })
+        .select()
+        .single();
+
+      if (upsertError) {
+        console.error(upsertError);
+        setError('Failed to save. Please try again.');
+      } else {
+        onLogUpdated(data as ReadingLog);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Unexpected error while saving.');
     } finally {
       setSaving(false);
     }
   };
 
+  const initials =
+    (book.title || '')
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '?';
+
   return (
-    <div>
-      <h2>Book details</h2>
-      <div className="card">
-        <div className="card-title">{book.title}</div>
-        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
-          {book.author}
+    <div className="card book-detail-card">
+      <div className="book-detail-layout">
+        {/* Cover column */}
+        <div className="book-detail-cover-wrap">
+          {book.cover_url ? (
+            <img
+              src={book.cover_url}
+              alt={book.title ?? 'Book cover'}
+              className="book-detail-cover"
+            />
+          ) : (
+            <div className="book-detail-cover fallback">
+              {initials}
+            </div>
+          )}
         </div>
-        {book.isbn && (
-          <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-            ISBN: {book.isbn}
+
+        {/* Main info column */}
+        <div className="book-detail-main">
+          <div className="book-detail-header">
+            <h2 className="book-detail-title">{book.title}</h2>
+            {book.author && (
+              <p className="book-detail-author">
+                {book.author}
+              </p>
+            )}
           </div>
-        )}
-        {book.description && (
-          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+
+          {/* Rating */}
+          <div className="book-detail-rating-row">
+            <span className="label">Your rating</span>
+            <div className="book-card-rating">
+              {Array.from({ length: 5 }).map((_, i) => {
+                const value = i + 1;
+                const isFilled =
+                  (hoverRating ?? rating ?? 0) >= value;
+
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className="star-btn"
+                    onClick={() => handleStarClick(value)}
+                    onMouseEnter={() => setHoverRating(value)}
+                    onMouseLeave={() => setHoverRating(null)}
+                    aria-label={`Rate ${value} star${value > 1 ? 's' : ''}`}
+                  >
+                    <span className={isFilled ? 'star star-filled' : 'star'}>
+                      ★
+                    </span>
+                  </button>
+                );
+              })}
+              {rating != null && (
+                <span className="rating-number muted">
+                  {rating.toFixed(1).replace(/\.0$/, '')}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Meta pills */}
+          <div className="book-detail-meta-row">
+            {book.page_count != null && book.page_count > 0 && (
+              <span className="meta-pill">
+                {book.page_count} pages
+              </span>
+            )}
+            {book.isbn && (
+              <span className="meta-pill meta-pill-mono">
+                ISBN {book.isbn}
+              </span>
+            )}
+          </div>
+
+          {/* Log form */}
+          <div className="book-detail-form">
+            <div className="form-row">
+              <label className="label" htmlFor="status">
+                Status
+              </label>
+              <select
+                id="status"
+                className="select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="to_read">To read</option>
+                <option value="not_started">Not started</option>
+                <option value="reading">Reading</option>
+                <option value="finished">Finished</option>
+                <option value="paused">Paused</option>
+                <option value="abandoned">Abandoned</option>
+              </select>
+            </div>
+
+            <div
+              className="form-row"
+              style={{ display: 'flex', gap: '0.75rem' }}
+            >
+              <div style={{ flex: 1 }}>
+                <label className="label" htmlFor="started_at">
+                  Date started
+                </label>
+                <input
+                  id="started_at"
+                  type="date"
+                  className="input"
+                  value={startedAt}
+                  onChange={(e) => setStartedAt(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="label" htmlFor="finished_at">
+                  Date finished
+                </label>
+                <input
+                  id="finished_at"
+                  type="date"
+                  className="input"
+                  value={finishedAt}
+                  onChange={(e) => setFinishedAt(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <label className="label" htmlFor="notes">
+                Thoughts / notes
+              </label>
+              <textarea
+                id="notes"
+                className="textarea"
+                placeholder="What did you think of this book?"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+
+            {error && (
+              <p className="muted" style={{ color: '#b91c1c' }}>
+                {error}
+              </p>
+            )}
+
+            <div style={{ marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                className="primary"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? 'Saving…' : 'Save log'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Optional description from Open Library / Goodreads */}
+      {book.description && (
+        <div className="book-detail-description">
+          <h3>Synopsis</h3>
+          <p className="muted">
             {book.description}
           </p>
-        )}
-      </div>
-
-      <h3>Reading progress</h3>
-      <div className="card">
-        <div className="form-row">
-          <label className="label">Status</label>
-          <select
-            className="select"
-            value={status}
-            onChange={e => setStatus(e.target.value as BookStatus)}
-          >
-            <option value="to_read">To Read</option>
-            <option value="reading">Reading</option>
-            <option value="finished">Finished</option>
-          </select>
         </div>
-
-        <div className="flex-row">
-          <div className="form-row flex-grow">
-            <label className="label">Date started</label>
-            <input
-              type="date"
-              className="input"
-              value={dateStarted}
-              onChange={e => setDateStarted(e.target.value)}
-            />
-          </div>
-          <div className="form-row flex-grow">
-            <label className="label">Date finished</label>
-            <input
-              type="date"
-              className="input"
-              value={dateFinished}
-              onChange={e => setDateFinished(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="form-row">
-          <label className="label">Rating (1–5)</label>
-          <input
-            type="number"
-            className="input"
-            min={1}
-            max={5}
-            value={rating}
-            onChange={e => setRating(e.target.value === '' ? '' : Number(e.target.value))}
-          />
-        </div>
-
-        <div className="form-row">
-          <label className="label">Comments</label>
-          <textarea
-            className="textarea"
-            value={review ?? ''}
-            onChange={e => setReview(e.target.value)}
-          />
-        </div>
-
-        <button className="primary" onClick={saveLog} disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-
-        {error && (
-          <div style={{ marginTop: '0.5rem', color: 'red' }}>{error}</div>
-        )}
-      </div>
+      )}
     </div>
   );
 };
