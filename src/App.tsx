@@ -246,7 +246,10 @@ const App: React.FC = () => {
           )}
 
           {view === 'scan' && (
-            <ScanView onBookFound={handleBookFoundFromScan} />
+            <ScanView
+              onBookFound={handleBookFoundFromScan}
+              onBack={() => handleNavigate('library')}
+            />
           )}
 
           {view === 'detail' && selectedBook && (
