@@ -1,6 +1,7 @@
 // src/pages/LibraryView.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { Book, ReadingLog } from '../types';
+import { supabase } from '../lib/supabaseClient';
 
 interface LibraryViewProps {
   books: Book[];
@@ -11,6 +12,26 @@ interface LibraryViewProps {
 type Filter = 'all' | 'reading' | 'finished' | 'unread';
 type SortMode = 'recent' | 'title' | 'author' | 'rating';
 
+// Helper: try to find a cover URL for an ISBN using Open Library
+async function lookupCoverUrlFromIsbn(isbn: string): Promise<string | null> {
+  const normalized = isbn.replace(/[^0-9Xx]/g, '');
+  if (!normalized) return null;
+
+  // Open Library's cover service by ISBN.
+  // If no cover exists, this returns 404 when probed with HEAD.
+  const candidate = `https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg?default=false`;
+
+  try {
+    const res = await fetch(candidate, { method: 'HEAD' });
+    if (res.ok) {
+      return candidate;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export const LibraryView: React.FC<LibraryViewProps> = ({
   books,
   logs,
@@ -20,12 +41,65 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [query, setQuery] = useState('');
 
+  // Local copy so we can update cover_url when we discover new covers
+  const [bookList, setBookList] = useState<Book[]>(books);
+
+  useEffect(() => {
+    setBookList(books);
+  }, [books]);
+
   const getLogForBook = (book: Book): ReadingLog | undefined =>
     logs.find((l) => l.book_id === book.id && l.user_id === book.user_id);
 
+  // 🔍 Backfill covers for books with ISBN but no cover_url
+  useEffect(() => {
+    let cancelled = false;
+
+    async function backfillCovers() {
+      // Only consider books with ISBN and no cover
+      const missing = bookList.filter(
+        (b) => !b.cover_url && b.isbn && b.isbn.trim().length > 0,
+      );
+
+      // Don't hammer the API: process at most 5 at a time
+      const batch = missing.slice(0, 5);
+      if (batch.length === 0) return;
+
+      for (const book of batch) {
+        if (cancelled) return;
+
+        const url = await lookupCoverUrlFromIsbn(book.isbn as string);
+        if (!url) continue;
+
+        // Update Supabase so it persists
+        try {
+          await supabase
+            .from('books')
+            .update({ cover_url: url })
+            .eq('id', book.id);
+        } catch {
+          // ignore db error – user still has fallback initials
+        }
+
+        // Optimistically update local state so Cody sees the cover immediately
+        setBookList((prev) =>
+          prev.map((b) =>
+            b.id === book.id ? { ...b, cover_url: url } : b,
+          ),
+        );
+      }
+    }
+
+    backfillCovers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bookList]);
+
   const filteredBooks = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let result = [...books];
+    let result = [...bookList];
 
     // 1) Search
     if (q) {
@@ -98,7 +172,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     });
 
     return result;
-  }, [books, logs, filter, sortMode, query]);
+  }, [bookList, logs, filter, sortMode, query]);
 
   return (
     <div className="library-view">
@@ -106,9 +180,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <div>
           <h2>Your library</h2>
           <p className="muted">
-            {books.length === 0
+            {bookList.length === 0
               ? 'Scan a book to get started.'
-              : `${books.length} book${books.length === 1 ? '' : 's'} in your collection`}
+              : `${bookList.length} book${bookList.length === 1 ? '' : 's'} in your collection`}
           </p>
         </div>
 
