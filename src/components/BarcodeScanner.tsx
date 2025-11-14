@@ -28,7 +28,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
           return;
         }
 
-        // Try to pick a back/rear/environment camera first
+        // Prefer a back/rear/environment camera if the label exposes it
         const backIndex = inputs.findIndex((d) =>
           /back|rear|environment/i.test(d.label),
         );
@@ -59,11 +59,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
 
     (async () => {
       try {
-        const deviceId = devices[selectedIndex]?.deviceId;
-        if (!deviceId) {
-          setError('Selected camera not available.');
-          return;
-        }
+        const device = devices[selectedIndex];
+        // Some environments return an empty deviceId but still work if we pass undefined
+        const deviceId = device?.deviceId || undefined;
 
         await codeReader.decodeFromVideoDevice(
           deviceId,
@@ -74,7 +72,7 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
               handled = true;
               const text = result.getText();
               onDetected(text);
-              // we don't call reset() (not always present); we just ignore further results
+              // We don't call reset(); we just ignore further results
             }
           },
         );

@@ -11,6 +11,7 @@ interface LibraryViewProps {
 
 type SortBy = 'title' | 'author' | 'created_at' | 'rating';
 type SortDir = 'asc' | 'desc';
+type StatusFilter = 'all' | 'favorite' | BookStatus;
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   books,
@@ -18,7 +19,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onSelectBook,
 }) => {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | BookStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('title');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -44,7 +45,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         const log = logsByBook.get(book.id) ?? null;
         const status: BookStatus | null = log?.status ?? null;
         const rating: number | null = log?.rating ?? null;
-        return { book, log, status, rating };
+        const isFavorite = (rating ?? 0) >= 4;
+        return { book, log, status, rating, isFavorite };
       }),
     [books, logsByBook],
   );
@@ -63,7 +65,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
 
     // Status filter
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'favorite') {
+      list = list.filter(({ isFavorite }) => isFavorite);
+    } else if (statusFilter !== 'all') {
       list = list.filter(({ status }) => status === statusFilter);
     }
 
@@ -95,59 +99,108 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return list;
   }, [booksWithMeta, search, statusFilter, sortBy, sortDir]);
 
+  const totalCount = books.length;
+  const filteredCount = filteredAndSorted.length;
+
+  const toggleSort = (field: SortBy) => {
+    if (sortBy === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
+
   return (
     <div>
-      <h2>Your library</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'baseline' }}>
+        <h2>Your library</h2>
+        <span className="muted" style={{ fontSize: '0.8rem' }}>
+          {filteredCount} / {totalCount} books
+        </span>
+      </div>
 
-      {/* Controls */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          marginBottom: '0.75rem',
-        }}
-      >
+      {/* Search */}
+      <div style={{ marginBottom: '0.5rem' }}>
         <input
           className="input"
-          style={{ flex: '1 1 180px' }}
           placeholder="Search by title or author"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+      </div>
 
-        <select
-          className="select"
-          value={statusFilter}
-          onChange={(e) =>
-            setStatusFilter(e.target.value as 'all' | BookStatus)
-          }
-        >
-          <option value="all">All statuses</option>
-          <option value="to_read">To read</option>
-          <option value="reading">Reading</option>
-          <option value="finished">Finished</option>
-        </select>
-
-        <select
-          className="select"
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortBy)}
-        >
-          <option value="title">Sort by title</option>
-          <option value="author">Sort by author</option>
-          <option value="created_at">Sort by date added</option>
-          <option value="rating">Sort by rating</option>
-        </select>
-
+      {/* Status chips */}
+      <div className="chip-row">
         <button
           type="button"
-          className="secondary"
-          onClick={() =>
-            setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-          }
+          className={`chip ${statusFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('all')}
         >
-          {sortDir === 'asc' ? '↑ Asc' : '↓ Desc'}
+          All
+        </button>
+        <button
+          type="button"
+          className={`chip ${statusFilter === 'to_read' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('to_read')}
+        >
+          To read
+        </button>
+        <button
+          type="button"
+          className={`chip ${statusFilter === 'reading' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('reading')}
+        >
+          Reading
+        </button>
+        <button
+          type="button"
+          className={`chip ${statusFilter === 'finished' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('finished')}
+        >
+          Finished
+        </button>
+        <button
+          type="button"
+          className={`chip ${statusFilter === 'favorite' ? 'active' : ''}`}
+          onClick={() => setStatusFilter('favorite')}
+        >
+          ★ Favorites
+        </button>
+      </div>
+
+      {/* Sort chips */}
+      <div className="chip-row" style={{ marginTop: '0.35rem', marginBottom: '0.5rem' }}>
+        <span className="muted" style={{ fontSize: '0.75rem' }}>
+          Sort:
+        </span>
+        <button
+          type="button"
+          className={`chip ${sortBy === 'title' ? 'active' : ''}`}
+          onClick={() => toggleSort('title')}
+        >
+          Title {sortBy === 'title' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+        </button>
+        <button
+          type="button"
+          className={`chip ${sortBy === 'author' ? 'active' : ''}`}
+          onClick={() => toggleSort('author')}
+        >
+          Author {sortBy === 'author' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+        </button>
+        <button
+          type="button"
+          className={`chip ${sortBy === 'created_at' ? 'active' : ''}`}
+          onClick={() => toggleSort('created_at')}
+        >
+          Date added {sortBy === 'created_at' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+        </button>
+        <button
+          type="button"
+          className={`chip ${sortBy === 'rating' ? 'active' : ''}`}
+          onClick={() => toggleSort('rating')}
+        >
+          Rating {sortBy === 'rating' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
         </button>
       </div>
 

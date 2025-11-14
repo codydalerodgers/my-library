@@ -1,5 +1,5 @@
 // src/components/BookCard.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import type { Book, ReadingLog } from '../types';
 
 interface BookCardProps {
@@ -8,9 +8,24 @@ interface BookCardProps {
   onClick: () => void;
 }
 
+const getCoverUrl = (book: Book): string | null => {
+  if (book.cover_url && book.cover_url.trim().length > 0) {
+    return book.cover_url;
+  }
+  if (book.isbn && book.isbn.trim().length > 0) {
+    const digits = book.isbn.replace(/[^\dX]/gi, '');
+    if (digits) {
+      // Open Library cover fallback
+      return `https://covers.openlibrary.org/b/isbn/${digits}-M.jpg`;
+    }
+  }
+  return null;
+};
+
 export const BookCard: React.FC<BookCardProps> = ({ book, log, onClick }) => {
   const status = log?.status ?? null;
   const rating = log?.rating ?? null;
+  const [hideImage, setHideImage] = useState(false);
 
   const statusLabel =
     status === 'reading'
@@ -38,14 +53,17 @@ export const BookCard: React.FC<BookCardProps> = ({ book, log, onClick }) => {
       ? book.title.trim()[0].toUpperCase()
       : '?';
 
+  const coverUrl = !hideImage ? getCoverUrl(book) : null;
+
   return (
     <div className="card clickable book-card" onClick={onClick}>
-      {book.cover_url ? (
+      {coverUrl ? (
         <img
-          src={book.cover_url}
+          src={coverUrl}
           alt={book.title}
           className="book-cover"
           loading="lazy"
+          onError={() => setHideImage(true)}
         />
       ) : (
         <div className="book-cover fallback">
