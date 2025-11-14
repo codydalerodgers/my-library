@@ -15,61 +15,107 @@ interface OpenLibraryBook {
   description?: string | { value?: string };
 }
 
+interface OpenLibraryApiBook {
+  title?: string;
+  authors?: { name?: string }[];
+  number_of_pages?: number;
+  description?: string | { value?: string };
+  cover?: {
+    small?: string;
+    medium?: string;
+    large?: string;
+  };
+}
+
 /**
- * Fetch basic metadata for a book from Open Library via ISBN-13.
+ * Try fetching book data from Open Library using the API endpoint.
+ * First tries the given ISBN, then (if it's a 13-digit ISBN) tries the ISBN-10 equivalent.
  */
-async function fetchOpenLibraryMetadata(isbn: string): Promise<{
+async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
   title: string;
   author: string | null;
   pageCount: number | null;
   description: string | null;
   coverUrl: string | null;
 } | null> {
-  try {
-    const resp = await fetch(`https://openlibrary.org/isbn/${isbn}.json`);
-    if (!resp.ok) return null;
+  // Normalize to digits/X
+  const digits = isbnRaw.replace(/[^\dX]/gi, '');
 
-    const data = (await resp.json()) as OpenLibraryBook;
-
-    // Try to fetch first author's name
-    let author: string | null = null;
-    if (data.authors && data.authors.length > 0) {
-      const authorKey = data.authors[0].key; // e.g. "/authors/OL123A"
-      if (authorKey) {
-        try {
-          const authorResp = await fetch(`https://openlibrary.org${authorKey}.json`);
-          if (authorResp.ok) {
-            const authorData = await authorResp.json();
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            author = (authorData as any).name ?? null;
-          }
-        } catch {
-          // ignore author fetch failure
-        }
+  const tryIsbn = async (isbn: string): Promise<{
+    title: string;
+    author: string | null;
+    pageCount: number | null;
+    description: string | null;
+    coverUrl: string | null;
+  } | null> => {
+    try {
+      const resp = await fetch(
+        `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`,
+      );
+      if (!resp.ok) {
+        return null;
       }
+
+      const json = (await resp.json()) as Record<string, OpenLibraryApiBook>;
+      const key = `ISBN:${isbn}`;
+      const data = json[key];
+      if (!data) return null;
+
+      const title = data.title ?? '';
+      const author = data.authors?.[0]?.name ?? null;
+      const pageCount = data.number_of_pages ?? null;
+
+      let description: string | null = null;
+      if (typeof data.description === 'string') {
+        description = data.description;
+      } else if (data.description && typeof data.description === 'object') {
+        description = (data.description as any).value ?? null;
+      }
+
+      const coverUrl =
+        data.cover?.large || data.cover?.medium || data.cover?.small || null;
+
+      return {
+        title,
+        author,
+        pageCount,
+        description,
+        coverUrl,
+      };
+    } catch (e) {
+      console.error('Open Library API error', e);
+      return null;
     }
+  };
 
-    // Description can be string or object
-    let description: string | null = null;
-    if (typeof data.description === 'string') {
-      description = data.description;
-    } else if (data.description && typeof data.description === 'object') {
-      description = data.description.value ?? null;
+  // 1) Try the raw digits (often ISBN-13 from barcodes)
+  const primary = await tryIsbn(digits);
+  if (primary) return primary;
+
+  // 2) If it's a 13-digit ISBN starting with 978/979, convert to ISBN-10 and try again
+  if (digits.length === 13 && (digits.startsWith('978') || digits.startsWith('979'))) {
+    const core = digits.slice(3, 12); // 9 digits
+    if (/^\d{9}$/.test(core)) {
+      let sum = 0;
+      for (let i = 0; i < 9; i++) {
+        const digit = Number(core[i]);
+        sum += digit * (10 - i);
+      }
+      const remainder = sum % 11;
+      const check = 11 - remainder;
+      let checkDigit: string;
+      if (check === 10) checkDigit = 'X';
+      else if (check === 11) checkDigit = '0';
+      else checkDigit = String(check);
+
+      const isbn10 = core + checkDigit;
+      const alt = await tryIsbn(isbn10);
+      if (alt) return alt;
     }
-
-    const coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
-
-    return {
-      title: data.title ?? '',
-      author,
-      pageCount: data.number_of_pages ?? null,
-      description,
-      coverUrl,
-    };
-  } catch (e) {
-    console.error('Open Library error', e);
-    return null;
   }
+
+  // Nothing found
+  return null;
 }
 
 export const ScanView: React.FC<ScanViewProps> = ({ onBookFound }) => {

@@ -12,9 +12,9 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Use any so we can safely call .reset() without TS complaining
-    const codeReader: any = new BrowserMultiFormatReader();
+    const codeReader = new BrowserMultiFormatReader();
     let isMounted = true;
+    let handled = false;
 
     (async () => {
       try {
@@ -22,27 +22,32 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
         const deviceId = videoInputDevices[0]?.deviceId;
 
         await codeReader.decodeFromVideoDevice(
-          deviceId ?? undefined, // avoid passing null
+          deviceId ?? undefined,
           videoRef.current!,
           (result: Result | undefined) => {
-            if (!isMounted) return;
+            if (!isMounted || handled) return;
             if (result) {
+              handled = true;
               const text = result.getText();
               onDetected(text);
-              // stop scanning after first result
-              codeReader.reset();
+              // NOTE: we do NOT call codeReader.reset() here,
+              // since some versions of @zxing/browser don't expose it.
+              // We just ignore any further results.
             }
           },
         );
       } catch (e: any) {
         console.error(e);
-        setError('Unable to access camera. Check permissions.');
+        if (isMounted) {
+          setError('Unable to access camera. Check permissions and try again.');
+        }
       }
     })();
 
     return () => {
+      // mark unmounted so callback stops doing anything
       isMounted = false;
-      codeReader.reset();
+      // we also don't call reset here to avoid the runtime error
     };
   }, [onDetected]);
 
