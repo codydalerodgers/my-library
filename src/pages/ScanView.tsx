@@ -8,13 +8,6 @@ interface ScanViewProps {
   onBookFound: (book: Book | null, isbn: string) => void;
 }
 
-interface OpenLibraryBook {
-  title?: string;
-  authors?: { key: string }[];
-  number_of_pages?: number;
-  description?: string | { value?: string };
-}
-
 interface OpenLibraryApiBook {
   title?: string;
   authors?: { name?: string }[];
