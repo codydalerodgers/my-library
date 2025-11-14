@@ -17,19 +17,64 @@ async function lookupCoverUrlFromIsbn(isbn: string): Promise<string | null> {
   const normalized = isbn.replace(/[^0-9Xx]/g, '');
   if (!normalized) return null;
 
-  // Open Library's cover service by ISBN.
-  // If no cover exists, this returns 404 when probed with HEAD.
-  const candidate = `https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg?default=false`;
+  // Helper to force https / strip weird query params if needed
+  const cleanUrl = (url: string) =>
+    url.replace(/^http:\/\//i, 'https://');
 
+  // --- 1) Open Library cover service by ISBN (direct image) ---
   try {
+    const candidate = `https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg?default=false`;
     const res = await fetch(candidate, { method: 'HEAD' });
     if (res.ok) {
       return candidate;
     }
-    return null;
   } catch {
-    return null;
+    // ignore and fall through
   }
+
+  // --- 2) Open Library API (sometimes has covers even when the direct
+  //         cover service doesn't respond how we expect) ---
+  try {
+    const apiUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${normalized}&format=json&jscmd=data`;
+    const res = await fetch(apiUrl);
+    if (res.ok) {
+      const data = await res.json();
+      const entry = data[`ISBN:${normalized}`];
+      const olCover =
+        entry?.cover?.large || entry?.cover?.medium || entry?.cover?.small;
+      if (olCover) {
+        return cleanUrl(olCover);
+      }
+    }
+  } catch {
+    // ignore and fall through
+  }
+
+  // --- 3) Google Books API as a backup source ---
+  try {
+    const gbUrl = `https://www.googleapis.com/books/v1/volumes?q=isbn:${normalized}`;
+    const res = await fetch(gbUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.items) && data.items.length > 0) {
+        const info = data.items[0].volumeInfo;
+        const img =
+          info?.imageLinks?.thumbnail ||
+          info?.imageLinks?.smallThumbnail ||
+          info?.imageLinks?.small ||
+          info?.imageLinks?.medium ||
+          info?.imageLinks?.large;
+        if (img) {
+          return cleanUrl(img);
+        }
+      }
+    }
+  } catch {
+    // ignore and fall through
+  }
+
+  // If all sources fail, give up
+  return null;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
