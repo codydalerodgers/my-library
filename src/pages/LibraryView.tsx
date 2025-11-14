@@ -25,7 +25,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const q = query.trim().toLowerCase();
     let result = [...books];
 
-    // Search filter
+    // Search
     if (q) {
       result = result.filter((b) => {
         const haystack = `${b.title ?? ''} ${b.author ?? ''} ${b.isbn ?? ''}`
@@ -67,7 +67,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         return db - da;
       });
     } else {
-      // Default: sort A–Z by title
+      // Default: A–Z by title
       result.sort((a, b) => {
         const at = (a.title ?? '').toLowerCase();
         const bt = (b.title ?? '').toLowerCase();
@@ -147,6 +147,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         ) : (
           filteredBooks.map((book) => {
             const log = getLogForBook(book);
+            const rating = log?.rating ?? null;
 
             let statusLabel = 'Unread';
             if (log) {
@@ -155,6 +156,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               else statusLabel = 'Unread';
             }
 
+            const initials =
+              (book.title || '')
+                .split(' ')
+                .map((w) => w[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase() || '?';
+
             return (
               <button
                 key={book.id}
@@ -162,17 +171,60 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 className="book-card"
                 onClick={() => onSelectBook(book)}
               >
-                <div className="book-card-main">
-                  <h3 className="book-title">{book.title}</h3>
-                  {book.author && (
-                    <p className="book-author muted">{book.author}</p>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  {/* Cover */}
+                  {book.cover_url ? (
+                    <img
+                      src={book.cover_url}
+                      alt={book.title ?? 'Book cover'}
+                      className="book-cover"
+                    />
+                  ) : (
+                    <div className="book-cover fallback">
+                      {initials}
+                    </div>
                   )}
-                </div>
-                <div className="book-card-meta">
-                  {book.isbn && (
-                    <span className="badge">ISBN {book.isbn}</span>
-                  )}
-                  <span className="badge badge-soft">{statusLabel}</span>
+
+                  {/* Main content */}
+                  <div className="book-card-main">
+                    <div className="book-card-header">
+                      <div>
+                        <h3 className="book-title">{book.title}</h3>
+                        {book.author && (
+                          <p className="book-author">{book.author}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Rating stars (if any) */}
+                    {rating != null && (
+                      <div className="book-card-rating">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <span
+                            key={i}
+                            className={
+                              i < rating ? 'star star-filled' : 'star'
+                            }
+                          >
+                            ★
+                          </span>
+                        ))}
+                        <span className="rating-number muted">
+                          {rating.toFixed(1).replace(/\.0$/, '')}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Meta row */}
+                    <div className="book-card-meta">
+                      {book.isbn && (
+                        <span className="badge book-isbn">
+                          ISBN {book.isbn}
+                        </span>
+                      )}
+                      <span className="badge badge-soft">{statusLabel}</span>
+                    </div>
+                  </div>
                 </div>
               </button>
             );

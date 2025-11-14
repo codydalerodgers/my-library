@@ -544,6 +544,27 @@ main,
   }
 }
 
+.book-card-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0.25rem 0 0.1rem;
+}
+
+.star {
+  font-size: 0.8rem;
+  color: #e5e7eb;
+}
+
+.star-filled {
+  color: #fbbf24;
+}
+
+.rating-number {
+  font-size: 0.75rem;
+  margin-left: 0.15rem;
+}
+
 /* === Responsive tweaks === */
 
 @media (max-width: 640px) {
