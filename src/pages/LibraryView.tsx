@@ -8,7 +8,8 @@ interface LibraryViewProps {
   onSelectBook: (book: Book) => void;
 }
 
-type Filter = 'all' | 'reading' | 'finished' | 'unread' | 'recent';
+type Filter = 'all' | 'reading' | 'finished' | 'unread';
+type SortMode = 'recent' | 'title' | 'author' | 'rating';
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   books,
@@ -16,6 +17,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onSelectBook,
 }) => {
   const [filter, setFilter] = useState<Filter>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [query, setQuery] = useState('');
 
   const getLogForBook = (book: Book): ReadingLog | undefined =>
@@ -25,7 +27,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const q = query.trim().toLowerCase();
     let result = [...books];
 
-    // Search
+    // 1) Search
     if (q) {
       result = result.filter((b) => {
         const haystack = `${b.title ?? ''} ${b.author ?? ''} ${b.isbn ?? ''}`
@@ -35,8 +37,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       });
     }
 
-    // Status filters
-    if (filter !== 'all' && filter !== 'recent') {
+    // 2) Status filters
+    if (filter !== 'all') {
       result = result.filter((b) => {
         const log = getLogForBook(b);
 
@@ -58,25 +60,45 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       });
     }
 
-    // Sorting
-    if (filter === 'recent') {
-      // Recently added: newest created_at first
-      result.sort((a, b) => {
-        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return db - da;
-      });
-    } else {
-      // Default: A–Z by title
-      result.sort((a, b) => {
-        const at = (a.title ?? '').toLowerCase();
-        const bt = (b.title ?? '').toLowerCase();
-        return at.localeCompare(bt);
-      });
-    }
+    // 3) Sorting
+    result.sort((a, b) => {
+      const logA = getLogForBook(a);
+      const logB = getLogForBook(b);
+
+      switch (sortMode) {
+        case 'title': {
+          const at = (a.title ?? '').toLowerCase();
+          const bt = (b.title ?? '').toLowerCase();
+          return at.localeCompare(bt);
+        }
+        case 'author': {
+          const aa = (a.author ?? '').toLowerCase();
+          const ba = (b.author ?? '').toLowerCase();
+          return aa.localeCompare(ba);
+        }
+        case 'rating': {
+          const ra = logA?.rating ?? 0;
+          const rb = logB?.rating ?? 0;
+          if (rb !== ra) return rb - ra; // highest rating first
+          const at = (a.title ?? '').toLowerCase();
+          const bt = (b.title ?? '').toLowerCase();
+          return at.localeCompare(bt);
+        }
+        case 'recent':
+        default: {
+          const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+          // Newest first
+          if (db !== da) return db - da;
+          const at = (a.title ?? '').toLowerCase();
+          const bt = (b.title ?? '').toLowerCase();
+          return at.localeCompare(bt);
+        }
+      }
+    });
 
     return result;
-  }, [books, logs, filter, query]);
+  }, [books, logs, filter, sortMode, query]);
 
   return (
     <div className="library-view">
@@ -98,6 +120,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <select
+            className="select sort-select"
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+          >
+            <option value="recent">Recently added</option>
+            <option value="title">Title (A–Z)</option>
+            <option value="author">Author (A–Z)</option>
+            <option value="rating">Rating (high → low)</option>
+          </select>
         </div>
       </div>
 
@@ -129,13 +161,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           onClick={() => setFilter('unread')}
         >
           Unread
-        </button>
-        <button
-          type="button"
-          className={`chip ${filter === 'recent' ? 'chip-active' : ''}`}
-          onClick={() => setFilter('recent')}
-        >
-          Recently added
         </button>
       </div>
 

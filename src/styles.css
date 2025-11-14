@@ -282,6 +282,23 @@ main,
   border-color: rgba(129, 140, 248, 0.6);
 }
 
+.book-cover {
+  width: 60px;
+  min-width: 60px;
+  height: 90px;
+  border-radius: 0.35rem;
+  object-fit: cover;
+  background: #e5e7eb;
+}
+
+.book-cover.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #4b5563;
+}
+
 /* === Forms === */
 
 .form-row {
