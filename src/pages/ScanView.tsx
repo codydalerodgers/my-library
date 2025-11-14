@@ -22,6 +22,28 @@ interface OpenLibraryApiBook {
 }
 
 /**
+ * Generic timeout wrapper for real Promises (like supabase.auth.getUser()).
+ */
+async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Timed out talking to the server. Please try again.'));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+/**
  * Try fetching book data from Open Library using the API endpoint.
  * First tries the given ISBN, then (if it's a 13-digit ISBN) tries the ISBN-10 equivalent.
  */
@@ -127,12 +149,14 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
     setStatus('Looking up book in your library...');
 
     try {
+      // 1) Get current user (with timeout)
       const {
         data: { user },
         error: userErr,
-      } = await supabase.auth.getUser();
+      } = await withTimeout(supabase.auth.getUser(), 8000);
       if (userErr || !user) throw userErr || new Error('Not signed in');
 
+      // 2) Check if book already exists for this user (no timeout wrapper needed here)
       const { data, error } = await supabase
         .from('books')
         .select('*')
@@ -166,7 +190,7 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
       }
     } catch (e: any) {
       console.error(e);
-      setStatus(e.message || 'Error while looking up book.');
+      setStatus(e?.message || 'Error while looking up book.');
     } finally {
       setIsProcessing(false);
     }
@@ -187,7 +211,7 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
       const {
         data: { user },
         error: userErr,
-      } = await supabase.auth.getUser();
+      } = await withTimeout(supabase.auth.getUser(), 8000);
       if (userErr || !user) throw userErr || new Error('Not signed in');
 
       const payload: any = {
@@ -199,8 +223,7 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
 
       if (pageCount !== '') payload.page_count = Number(pageCount);
       if (description.trim()) payload.description = description.trim();
-      // You can also store cover_url here if you want:
-      // payload.cover_url = `https://covers.openlibrary.org/b/isbn/${formIsbn}-L.jpg`;
+      // Optional: payload.cover_url = `https://covers.openlibrary.org/b/isbn/${formIsbn}-L.jpg`;
 
       const { data, error } = await supabase
         .from('books')
@@ -216,7 +239,7 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
       onBookFound(newBook, formIsbn);
     } catch (e: any) {
       console.error(e);
-      setFormError(e.message || 'Failed to save book.');
+      setFormError(e?.message || 'Failed to save book.');
     } finally {
       setSaving(false);
     }
