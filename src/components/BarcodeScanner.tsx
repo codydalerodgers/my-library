@@ -17,43 +17,64 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
   // ------------------------------------------------------
   // 1) Discover cameras and pick a sensible default
   // ------------------------------------------------------
-  useEffect(() => {
+    useEffect(() => {
     let cancelled = false;
+    let permissionStream: MediaStream | null = null;
 
     (async () => {
-      try {
-        // Trigger permission prompt so enumerateDevices returns labels
-        await navigator.mediaDevices.getUserMedia({ video: true });
+        try {
+        // Ask for permission and get a stream
+        permissionStream = await navigator.mediaDevices.getUserMedia({ video: true });
 
+        // Now that we have permission, enumerate devices
         const all = await navigator.mediaDevices.enumerateDevices();
-        if (cancelled) return;
+        if (cancelled) {
+            // If we were cancelled while awaiting, stop the stream and bail
+            permissionStream?.getTracks().forEach((t) => t.stop());
+            return;
+        }
+
+        // We no longer need this temporary stream → stop it immediately
+        permissionStream.getTracks().forEach((t) => t.stop());
+        permissionStream = null;
 
         const inputs = all.filter((d) => d.kind === 'videoinput');
         if (!inputs.length) {
-          setError('No camera devices found.');
-          return;
+            setError('No camera devices found.');
+            return;
         }
 
         setDevices(inputs);
 
         // Prefer a "back" / "rear" / "environment" camera if present
         const backIndex = inputs.findIndex((d) =>
-          /back|rear|environment/i.test(d.label),
+            /back|rear|environment/i.test(d.label),
         );
         setSelectedIndex(backIndex >= 0 ? backIndex : 0);
         setReady(true);
-      } catch (e) {
+        } catch (e) {
         if (!cancelled) {
-          console.error(e);
-          setError('Unable to access camera.');
+            console.error(e);
+            setError('Unable to access camera.');
         }
-      }
+
+        // If we errored but still have a stream, stop it just in case
+        if (permissionStream) {
+            permissionStream.getTracks().forEach((t) => t.stop());
+            permissionStream = null;
+        }
+        }
     })();
 
+    // Cleanup: if the component unmounts before we finish, stop any temp stream
     return () => {
-      cancelled = true;
+        cancelled = true;
+        if (permissionStream) {
+        permissionStream.getTracks().forEach((t) => t.stop());
+        permissionStream = null;
+        }
     };
-  }, []);
+    }, []);
 
   // ------------------------------------------------------
   // 2) Start/stop scanning when ready / device changes
