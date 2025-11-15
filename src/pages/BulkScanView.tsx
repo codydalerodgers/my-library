@@ -7,7 +7,13 @@ interface BulkScanViewProps {
   onBookAdded?: (book: Book) => void;
 }
 
-type EntryStatus = 'pending' | 'processing' | 'added' | 'duplicate' | 'error';
+type EntryStatus =
+  | 'pending'
+  | 'processing'
+  | 'added'
+  | 'duplicate'
+  | 'error'
+  | 'not_found';
 
 interface BulkEntry {
   id: string;
@@ -16,6 +22,10 @@ interface BulkEntry {
   status: EntryStatus;
   message?: string;
   title?: string;
+  manualTitle?: string;
+  manualAuthor?: string;
+  manualPages?: string;
+  editingManual?: boolean;
 }
 
 export const BulkScanView: React.FC<BulkScanViewProps> = ({ onBookAdded }) => {
@@ -65,6 +75,137 @@ export const BulkScanView: React.FC<BulkScanViewProps> = ({ onBookAdded }) => {
     setEntries((prev) =>
       prev.map((e) => (e.id === id ? { ...e, ...updates } : e)),
     );
+  };
+
+    const startManualEntry = (id: string) => {
+    setEntries((prev) =>
+      prev.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              editingManual: true,
+              manualTitle: e.manualTitle ?? e.title ?? '',
+              manualAuthor: e.manualAuthor ?? '',
+              manualPages: e.manualPages ?? '',
+            }
+          : e,
+      ),
+    );
+  };
+
+  const handleManualFieldChange = (
+    id: string,
+    field: 'manualTitle' | 'manualAuthor' | 'manualPages',
+    value: string,
+  ) => {
+    setEntries((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)),
+    );
+  };
+
+  const saveManualEntry = async (id: string) => {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+
+    const title = (entry.manualTitle || '').trim();
+    if (!title) {
+      updateEntry(id, {
+        message: 'Title is required to add manually.',
+      });
+      return;
+    }
+
+    const author =
+      (entry.manualAuthor && entry.manualAuthor.trim()) || null;
+    const pageCount =
+      entry.manualPages && entry.manualPages.trim()
+        ? Number(entry.manualPages.trim())
+        : null;
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        updateEntry(id, {
+          status: 'error',
+          message: 'You must be signed in to save.',
+        });
+        return;
+      }
+
+      const userId = user.id;
+
+      // Check for duplicate with same ISBN for this user
+      const { data: existing, error: existingError } = await supabase
+        .from('books')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('isbn', entry.isbn)
+        .maybeSingle();
+
+      if (existingError) {
+        console.error(existingError);
+        updateEntry(id, {
+          status: 'error',
+          message: 'Error checking for duplicates.',
+        });
+        return;
+      }
+
+      if (existing) {
+        updateEntry(id, {
+          status: 'duplicate',
+          message: 'Already in your library',
+          editingManual: false,
+        });
+        return;
+      }
+
+      const insertPayload = {
+        user_id: userId,
+        isbn: entry.isbn,
+        title,
+        author,
+        page_count: Number.isFinite(pageCount || NaN) ? pageCount : null,
+        cover_url: null,
+        description: null,
+      };
+
+      const { data: inserted, error: insertError } = await supabase
+        .from('books')
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error(insertError);
+        updateEntry(id, {
+          status: 'error',
+          message: 'Failed to insert into library',
+        });
+        return;
+      }
+
+      updateEntry(id, {
+        status: 'added',
+        message: 'Added to library (manual)',
+        title: (inserted as any)?.title ?? title,
+        editingManual: false,
+      });
+
+      if (onBookAdded && inserted) {
+        onBookAdded(inserted as Book);
+      }
+    } catch (err) {
+      console.error(err);
+      updateEntry(id, {
+        status: 'error',
+        message: 'Unexpected error while saving manually',
+      });
+    }
   };
 
   const handleScan = async (code: string) => {
@@ -118,7 +259,7 @@ export const BulkScanView: React.FC<BulkScanViewProps> = ({ onBookAdded }) => {
       const metadata = await fetchBookMetadata(normalized);
       if (!metadata || !metadata.title) {
         updateEntry(id, {
-          status: 'error',
+          status: 'not_found',
           message: 'No metadata found; add manually later',
         });
         // Optionally create a minimal record; for now, skip insert.
@@ -263,6 +404,9 @@ export const BulkScanView: React.FC<BulkScanViewProps> = ({ onBookAdded }) => {
                   {entry.status === 'duplicate' && (
                     <span className="badge">Duplicate</span>
                   )}
+                  {entry.status === 'not_found' && (
+                    <span className="badge badge-soft">Not found</span>
+                  )}
                   {entry.status === 'error' && (
                     <span
                       className="badge"
@@ -271,7 +415,91 @@ export const BulkScanView: React.FC<BulkScanViewProps> = ({ onBookAdded }) => {
                       Error
                     </span>
                   )}
+                  {entry.status === 'not_found' && !entry.editingManual && (
+                    <button
+                      type="button"
+                      className="secondary small"
+                      style={{ marginLeft: '0.5rem' }}
+                      onClick={() => startManualEntry(entry.id)}
+                    >
+                      Add details
+                    </button>
+                  )}
                 </div>
+                {entry.editingManual && (
+                  <div style={{ marginTop: '0.5rem', width: '100%' }}>
+                    <div className="form-row">
+                      <label className="label">Title *</label>
+                      <input
+                        className="input"
+                        value={entry.manualTitle ?? ''}
+                        onChange={(e) =>
+                          handleManualFieldChange(
+                            entry.id,
+                            'manualTitle',
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label className="label">Author</label>
+                      <input
+                        className="input"
+                        value={entry.manualAuthor ?? ''}
+                        onChange={(e) =>
+                          handleManualFieldChange(
+                            entry.id,
+                            'manualAuthor',
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label className="label">Page count</label>
+                      <input
+                        className="input"
+                        type="number"
+                        inputMode="numeric"
+                        value={entry.manualPages ?? ''}
+                        onChange={(e) =>
+                          handleManualFieldChange(
+                            entry.id,
+                            'manualPages',
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '0.5rem',
+                        marginTop: '0.25rem',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="primary small"
+                        onClick={() => saveManualEntry(entry.id)}
+                      >
+                        Save to library
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary small"
+                        onClick={() =>
+                          updateEntry(entry.id, {
+                            editingManual: false,
+                          })
+                        }
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
