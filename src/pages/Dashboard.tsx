@@ -42,8 +42,8 @@ export function Dashboard({ books, logs }: DashboardProps) {
     averageRating,
     ratingCounts,
     monthlyFinished,
-    currentlyReading,
-    recentlyFinished,
+    // currentlyReading,
+    // recentlyFinished,
   } = useMemo(() => {
     const totalBooks = books.length;
 
