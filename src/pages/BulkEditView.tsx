@@ -1,5 +1,10 @@
 // src/pages/BulkEditView.tsx
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, {
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+} from 'react';
 import type { Book, ReadingLog } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
@@ -44,9 +49,9 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
         ? String((log as any).rating)
         : '',
     startedAt:
-      (log && ((log as any).started_at as string | null)) || '',
+      (log && ((log as any).date_started as string | null)) || '',
     finishedAt:
-      (log && ((log as any).finished_at as string | null)) || '',
+      (log && ((log as any).date_finished as string | null)) || '',
   });
 
   const [status, setStatus] = useState<string>(initialRef.current.status);
@@ -69,9 +74,9 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
           ? String((log as any).rating)
           : '',
       startedAt:
-        (log && ((log as any).started_at as string | null)) || '',
+        (log && ((log as any).date_started as string | null)) || '',
       finishedAt:
-        (log && ((log as any).finished_at as string | null)) || '',
+        (log && ((log as any).date_finished as string | null)) || '',
     };
 
     initialRef.current = nextInitial;
@@ -136,8 +141,8 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
           numericRating !== null && Number.isFinite(numericRating)
             ? numericRating
             : null,
-        started_at: startedAt || null,
-        finished_at: finishedAt || null,
+        date_started: startedAt || null,
+        date_finished: finishedAt || null,
         // Keep notes as-is if they exist already, otherwise null
         notes: log && (log as any).notes ? (log as any).notes : null,
       };
@@ -148,7 +153,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
         error: existingError,
       } = await supabase
         .from('reading_logs')
-        .select('id, status, rating, started_at, finished_at, notes')
+        .select('id, status, rating, date_started, date_finished, notes')
         .eq('user_id', user.id)
         .eq('book_id', book.id)
         .maybeSingle();
@@ -169,8 +174,8 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
           .update({
             status: basePayload.status,
             rating: basePayload.rating,
-            started_at: basePayload.started_at,
-            finished_at: basePayload.finished_at,
+            date_started: basePayload.date_started,
+            date_finished: basePayload.date_finished,
             notes: basePayload.notes,
           })
           .eq('id', (existing as any).id)
@@ -214,9 +219,9 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
               ? String((newLog as any).rating)
               : '',
           startedAt:
-            ((newLog as any).started_at as string | null) || '',
+            ((newLog as any).date_started as string | null) || '',
           finishedAt:
-            ((newLog as any).finished_at as string | null) || '',
+            ((newLog as any).date_finished as string | null) || '',
         };
 
         initialRef.current = nextInitial;
@@ -241,10 +246,10 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
 
   const yearLabel = (() => {
     const finished = parseDate(
-      finishedAt || ((log as any)?.finished_at as string | null),
+      finishedAt || ((log as any)?.date_finished as string | null),
     );
     const started = parseDate(
-      startedAt || ((log as any)?.started_at as string | null),
+      startedAt || ((log as any)?.date_started as string | null),
     );
     const d = finished || started;
     return d ? d.getFullYear() : null;
@@ -397,8 +402,8 @@ export const BulkEditView: React.FC<BulkEditViewProps> = ({
   const allYears = useMemo(() => {
     const yearSet = new Set<number>();
     logs.forEach((log) => {
-      const started = parseDate((log as any).started_at as string | null);
-      const finished = parseDate((log as any).finished_at as string | null);
+      const started = parseDate((log as any).date_started as string | null);
+      const finished = parseDate((log as any).date_finished as string | null);
       if (started) yearSet.add(started.getFullYear());
       if (finished) yearSet.add(finished.getFullYear());
     });
@@ -432,8 +437,12 @@ export const BulkEditView: React.FC<BulkEditViewProps> = ({
       // Year filter
       if (yearFilter !== 'all') {
         const yearInt = parseInt(yearFilter, 10);
-        const finished = parseDate((log as any)?.finished_at as string | null);
-        const started = parseDate((log as any)?.started_at as string | null);
+        const finished = parseDate(
+          (log as any)?.date_finished as string | null,
+        );
+        const started = parseDate(
+          (log as any)?.date_started as string | null,
+        );
         const rowYear =
           finished?.getFullYear() ?? started?.getFullYear() ?? null;
 
