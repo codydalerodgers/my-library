@@ -1,6 +1,7 @@
 // src/components/BarcodeScanner.tsx
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import type { IScannerControls } from '@zxing/browser';
 import type { Result } from '@zxing/library';
 
 interface BarcodeScannerProps {
@@ -9,90 +10,72 @@ interface BarcodeScannerProps {
 
 export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [ready, setReady] = useState(false);
 
   // ------------------------------------------------------
-  // 1) Discover cameras and pick a sensible default
+  // 1) Discover cameras
   // ------------------------------------------------------
-    useEffect(() => {
-    let cancelled = false;
-    let permissionStream: MediaStream | null = null;
+  useEffect(() => {
+    let mounted = true;
 
     (async () => {
-        try {
-        // Ask for permission and get a stream
-        permissionStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      try {
+        const inputs = await BrowserMultiFormatReader.listVideoInputDevices();
+        if (!mounted) return;
 
-        // Now that we have permission, enumerate devices
-        const all = await navigator.mediaDevices.enumerateDevices();
-        if (cancelled) {
-            // If we were cancelled while awaiting, stop the stream and bail
-            permissionStream?.getTracks().forEach((t) => t.stop());
-            return;
-        }
-
-        // We no longer need this temporary stream → stop it immediately
-        permissionStream.getTracks().forEach((t) => t.stop());
-        permissionStream = null;
-
-        const inputs = all.filter((d) => d.kind === 'videoinput');
         if (!inputs.length) {
-            setError('No camera devices found.');
-            return;
+          setError('No camera found on this device.');
+          return;
         }
+
+        // Prefer a back/rear/environment camera if label exposes it
+        const backIndex = inputs.findIndex((d) =>
+          /back|rear|environment/i.test(d.label),
+        );
 
         setDevices(inputs);
-
-        // Prefer a "back" / "rear" / "environment" camera if present
-        const backIndex = inputs.findIndex((d) =>
-            /back|rear|environment/i.test(d.label),
-        );
         setSelectedIndex(backIndex >= 0 ? backIndex : 0);
         setReady(true);
-        } catch (e) {
-        if (!cancelled) {
-            console.error(e);
-            setError('Unable to access camera.');
+      } catch (e) {
+        console.error(e);
+        if (mounted) {
+          setError('Unable to access camera devices.');
         }
-
-        // If we errored but still have a stream, stop it just in case
-        if (permissionStream) {
-            permissionStream.getTracks().forEach((t) => t.stop());
-            permissionStream = null;
-        }
-        }
+      }
     })();
 
-    // Cleanup: if the component unmounts before we finish, stop any temp stream
     return () => {
-        cancelled = true;
-        if (permissionStream) {
-        permissionStream.getTracks().forEach((t) => t.stop());
-        permissionStream = null;
-        }
+      mounted = false;
     };
-    }, []);
+  }, []);
 
   // ------------------------------------------------------
   // 2) Start/stop scanning when ready / device changes
   // ------------------------------------------------------
   useEffect(() => {
-    if (!ready || !videoRef.current || !devices.length) return;
+    if (!ready || !devices.length || !videoRef.current) return;
 
     const codeReader = new BrowserMultiFormatReader();
     let active = true;
 
-    const stopStream = () => {
+    // Helper to stop via ZXing controls + stop any remaining tracks
+    const stopScanner = () => {
       try {
-        // Ask zxing to stop if it exposes reset
-        (codeReader as any)?.reset?.();
+        if (controlsRef.current) {
+          controlsRef.current.stop();
+        }
       } catch (err) {
-        console.warn('codeReader.reset() failed', err);
+        console.warn('Error stopping scanner controls:', err);
+      } finally {
+        controlsRef.current = null;
       }
 
+      // Extra safety: clear video srcObject if present
       const video = videoRef.current;
       if (video && video.srcObject instanceof MediaStream) {
         const stream = video.srcObject as MediaStream;
@@ -108,15 +91,37 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
       .decodeFromVideoDevice(
         deviceId,
         videoRef.current,
-        (result: Result | undefined, _err) => {
+        (
+          result: Result | undefined,
+          err: unknown,
+          controls?: IScannerControls,
+        ) => {
           if (!active) return;
-          if (result) {
-            active = false;
-            const text = result.getText();
 
-            // 🔻 Stop camera immediately BEFORE notifying parent
-            // so that even if onDetected changes view, Safari sees tracks closed.
-            stopStream();
+          // Store controls so we can stop later (cleanup or after success)
+          if (controls && !controlsRef.current) {
+            controlsRef.current = controls;
+          }
+
+          // Ignore the "no code found yet" noise, only log real errors
+          if (
+            err &&
+            (err as any).message &&
+            !(err as any).message.includes(
+              'No MultiFormat Readers were able to detect the code',
+            )
+          ) {
+            console.warn('Scanner error:', err);
+          }
+
+          if (result) {
+            const text = result.getText();
+            active = false;
+
+            // 🔻 Stop camera immediately via ZXing controls & tracks
+            stopScanner();
+
+            // Then notify parent
             onDetected(text);
           }
         },
@@ -124,13 +129,13 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
       .catch((err) => {
         if (!active) return;
         console.error(err);
-        setError('Unable to start camera.');
+        setError('Unable to start camera. Check permissions and try again.');
       });
 
-    // Cleanup on unmount / device change / tab switch
+    // Cleanup on unmount / device change
     return () => {
       active = false;
-      stopStream();
+      stopScanner();
     };
   }, [ready, devices, selectedIndex, onDetected]);
 
