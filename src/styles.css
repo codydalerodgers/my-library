@@ -1067,6 +1067,63 @@ main,
   }
 }
 
+/* === Dashboard fixes: rating distribution === */
+
+.rating-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+/* Shell for each bar (used in Dashboard.tsx) */
+.rating-bar-shell {
+  position: relative;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+/* Override earlier absolute positioning so it stays inside the shell */
+.rating-bar-fill {
+  position: static;
+  height: 100%;
+  border-radius: 999px;
+  /* background & transition still come from the earlier rule */
+}
+
+/* === Dashboard fixes: monthly finished timeline === */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.timeline-bar-shell {
+  position: relative;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.timeline-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6366f1, #4f46e5);
+  transition: width 0.25s ease;
+}
+
 /* === Global responsive tweaks === */
 
 @media (max-width: 640px) {
