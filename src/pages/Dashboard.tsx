@@ -291,7 +291,7 @@ export function Dashboard({ books, logs }: DashboardProps) {
 
           {/* Lists: currently reading & recently finished */}
           <section className="dashboard-grid dashboard-grid-2col">
-            <div className="card dashboard-panel">
+            {/* <div className="card dashboard-panel">
               <div className="panel-header">
                 <div>
                   <h3>Currently reading</h3>
@@ -340,9 +340,9 @@ export function Dashboard({ books, logs }: DashboardProps) {
                   })}
                 </ul>
               )}
-            </div>
+            </div> */}
 
-            <div className="card dashboard-panel">
+            {/* <div className="card dashboard-panel">
               <div className="panel-header">
                 <div>
                   <h3>Recently finished</h3>
@@ -391,7 +391,7 @@ export function Dashboard({ books, logs }: DashboardProps) {
                   })}
                 </ul>
               )}
-            </div>
+            </div> */}
           </section>
         </>
       )}
