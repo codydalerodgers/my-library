@@ -10,18 +10,6 @@ interface ScanViewProps {
   onBack: () => void;
 }
 
-interface OpenLibraryApiBook {
-  title?: string;
-  authors?: { name?: string }[];
-  number_of_pages?: number;
-  description?: string | { value?: string };
-  cover?: {
-    small?: string;
-    medium?: string;
-    large?: string;
-  };
-}
-
 async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
