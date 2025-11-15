@@ -7,10 +7,11 @@ import { ScanView } from "./pages/ScanView";
 import { Dashboard } from "./pages/Dashboard";
 import { BookDetail } from "./pages/BookDetail";
 import { BulkScanView } from "./pages/BulkScanView";
+import { BulkEditView } from './pages/BulkEditView';
 
 import type { Book, ReadingLog } from "./types";
 
-type View = "library" | "scan" | "bulk" | "detail" | "dashboard";
+type View = "library" | "scan" | "bulk" | "detail" | "dashboard" | "manage";
 
 export const App: React.FC = () => {
   // ===== Global App State =====
@@ -276,6 +277,13 @@ export const App: React.FC = () => {
             >
               Dashboard
             </button>
+            <button
+              type="button"
+              className={view === "manage" ? "nav-button active" : "nav-button"}
+              onClick={() => setView("manage")}
+            >
+              Edit
+            </button>
           </nav>
           <div className="topbar-right">
             <button
@@ -295,6 +303,14 @@ export const App: React.FC = () => {
               books={books}
               logs={readingLogs}
               onSelectBook={handleSelectBook}
+            />
+          )}
+
+          {view === "manage" && (
+            <BulkEditView
+              books={books}
+              logs={readingLogs}
+              onLogUpdated={handleLogUpdated}
             />
           )}
 
