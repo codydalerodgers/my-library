@@ -1,5 +1,5 @@
 // src/pages/BulkEditView.tsx
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import type { Book, ReadingLog } from '../types';
 import { supabase } from '../lib/supabaseClient';
 
@@ -31,48 +31,69 @@ interface RowProps {
 }
 
 const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
-  const [status, setStatus] = useState<string>(
-    (log && (log as any).status) || 'finished',
-  );
-  const [rating, setRating] = useState<string>(
-    log && typeof (log as any).rating === 'number'
-      ? String((log as any).rating)
-      : '',
-  );
+  // Initial values come from the existing log (if any), otherwise blank.
+  const initialRef = useRef<{
+    status: string;
+    rating: string;
+    startedAt: string;
+    finishedAt: string;
+  }>({
+    status: log ? ((log as any).status as string | undefined) || '' : '',
+    rating:
+      log && typeof (log as any).rating === 'number'
+        ? String((log as any).rating)
+        : '',
+    startedAt:
+      (log && ((log as any).started_at as string | null)) || '',
+    finishedAt:
+      (log && ((log as any).finished_at as string | null)) || '',
+  });
+
+  const [status, setStatus] = useState<string>(initialRef.current.status);
+  const [rating, setRating] = useState<string>(initialRef.current.rating);
   const [startedAt, setStartedAt] = useState<string>(
-    (log && ((log as any).started_at as string | null)) || '',
+    initialRef.current.startedAt,
   );
   const [finishedAt, setFinishedAt] = useState<string>(
-    (log && ((log as any).finished_at as string | null)) || '',
+    initialRef.current.finishedAt,
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Keep local state in sync if log prop changes
+  // Keep local state & "initial" snapshot in sync if the log prop changes
   useEffect(() => {
-    if (!log) {
-      setStatus('finished');
-      setRating('');
-      setStartedAt('');
-      setFinishedAt('');
-      setError(null);
-      setSaving(false);
-      return;
-    }
+    const nextInitial = {
+      status: log ? ((log as any).status as string | undefined) || '' : '',
+      rating:
+        log && typeof (log as any).rating === 'number'
+          ? String((log as any).rating)
+          : '',
+      startedAt:
+        (log && ((log as any).started_at as string | null)) || '',
+      finishedAt:
+        (log && ((log as any).finished_at as string | null)) || '',
+    };
 
-    setStatus((log as any).status || 'finished');
-    setRating(
-      typeof (log as any).rating === 'number'
-        ? String((log as any).rating)
-        : '',
-    );
-    setStartedAt(((log as any).started_at as string | null) || '');
-    setFinishedAt(((log as any).finished_at as string | null) || '');
+    initialRef.current = nextInitial;
+
+    setStatus(nextInitial.status);
+    setRating(nextInitial.rating);
+    setStartedAt(nextInitial.startedAt);
+    setFinishedAt(nextInitial.finishedAt);
     setError(null);
     setSaving(false);
   }, [log]);
 
+  // Has the user changed anything?
+  const dirty =
+    status !== initialRef.current.status ||
+    rating !== initialRef.current.rating ||
+    startedAt !== initialRef.current.startedAt ||
+    finishedAt !== initialRef.current.finishedAt;
+
   const handleSave = async () => {
+    if (!dirty) return; // nothing to do
+
     setSaving(true);
     setError(null);
 
@@ -88,14 +109,19 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
         return;
       }
 
-      // Decide status if empty
-      const effectiveStatus =
-        status ||
-        (finishedAt
-          ? 'finished'
-          : startedAt
-          ? 'reading'
-          : 'to_read');
+      // Decide status if user left it blank
+      let effectiveStatus: string;
+      if (status) {
+        effectiveStatus = status;
+      } else if (log && (log as any).status) {
+        effectiveStatus = (log as any).status as string;
+      } else if (finishedAt) {
+        effectiveStatus = 'finished';
+      } else if (startedAt) {
+        effectiveStatus = 'reading';
+      } else {
+        effectiveStatus = 'to_read';
+      }
 
       const numericRating =
         rating && rating.trim()
@@ -127,7 +153,27 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
         console.error(upsertError);
         setError('Failed to save. Please try again.');
       } else {
-        onLogUpdated(data as ReadingLog);
+        const newLog = data as ReadingLog;
+        // Update parent state
+        onLogUpdated(newLog);
+
+        // Refresh our "initial" snapshot to the saved values
+        const nextInitial = {
+          status: (newLog as any).status || '',
+          rating:
+            typeof (newLog as any).rating === 'number'
+              ? String((newLog as any).rating)
+              : '',
+          startedAt:
+            ((newLog as any).started_at as string | null) || '',
+          finishedAt:
+            ((newLog as any).finished_at as string | null) || '',
+        };
+        initialRef.current = nextInitial;
+        setStatus(nextInitial.status);
+        setRating(nextInitial.rating);
+        setStartedAt(nextInitial.startedAt);
+        setFinishedAt(nextInitial.finishedAt);
       }
     } catch (err) {
       console.error(err);
@@ -137,12 +183,19 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
     }
   };
 
+  // What to show in the pill at the right side of the row
   const displayStatus =
-    status || (log && (log as any).status) || '—';
+    (log && ((log as any).status as string | undefined)) ||
+    status ||
+    '—';
 
   const yearLabel = (() => {
-    const finished = parseDate(finishedAt || ((log as any)?.finished_at as string | null));
-    const started = parseDate(startedAt || ((log as any)?.started_at as string | null));
+    const finished = parseDate(
+      finishedAt || ((log as any)?.finished_at as string | null),
+    );
+    const started = parseDate(
+      startedAt || ((log as any)?.started_at as string | null),
+    );
     const d = finished || started;
     return d ? d.getFullYear() : null;
   })();
@@ -198,6 +251,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               >
+                <option value="">—</option>
                 <option value="to_read">To read</option>
                 <option value="reading">Reading</option>
                 <option value="finished">Finished</option>
@@ -250,7 +304,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
               <button
                 type="button"
                 className="primary small"
-                disabled={saving}
+                disabled={!dirty || saving}
                 onClick={handleSave}
               >
                 {saving ? 'Saving…' : 'Save'}
