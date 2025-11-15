@@ -12,26 +12,11 @@ type BookWithLog = {
   log: ReadingLog;
 };
 
-// Safely parse a date string
-function parseDate(value?: string | null): Date | null {
+function parseDate(value: string | Date | null | undefined): Date | null {
   if (!value) return null;
+  if (value instanceof Date) return value;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-// Get the "finished" date for a log, using your real columns
-function getFinishedDate(log: ReadingLog): Date | null {
-  const anyLog = log as any;
-  const raw =
-    (anyLog.date_finished as string | null) ||
-    (anyLog.date_started as string | null); // fallback if no finished date yet
-  return parseDate(raw);
-}
-
-// Just the year we consider the book "finished"
-function getFinishedYear(log: ReadingLog): number | null {
-  const d = getFinishedDate(log);
-  return d ? d.getFullYear() : null;
 }
 
 export function Dashboard({ books, logs }: DashboardProps) {
@@ -55,7 +40,7 @@ export function Dashboard({ books, logs }: DashboardProps) {
     // Map logs by book_id (you have at most one per book due to the constraint)
     const logsByBook = new Map<string, ReadingLog>();
     logs.forEach((log) => {
-      logsByBook.set(String((log as any).book_id), log);
+      logsByBook.set(String(log.book_id), log);
     });
 
     const allWithLogs: BookWithLog[] = [];
@@ -92,15 +77,10 @@ export function Dashboard({ books, logs }: DashboardProps) {
       }
     });
 
-    const finishedThisYear = logs.filter((log) => {
-      const anyLog = log as any;
-      return (
-        anyLog.status === 'finished' &&
-        getFinishedYear(log) === thisYear
-      );
-    });
-
-    const finishedThisYearCount = finishedThisYear.length;
+    const finishedThisYearCount = finishedLogs.filter((log) => {
+      const d = parseDate((log as any).finished_at);
+      return d && d.getFullYear() === thisYear;
+    }).length;
 
     const averageRating =
       ratedLogs.length === 0
@@ -118,12 +98,8 @@ export function Dashboard({ books, logs }: DashboardProps) {
       const year = d.getFullYear();
 
       const count = finishedLogs.filter((log) => {
-        const fd = getFinishedDate(log);
-        return (
-          fd &&
-          fd.getFullYear() === year &&
-          fd.getMonth() === d.getMonth()
-        );
+        const fd = parseDate((log as any).finished_at);
+        return fd && fd.getFullYear() === year && fd.getMonth() === d.getMonth();
       }).length;
 
       monthlyFinished.push({ label: month, count });
@@ -133,10 +109,8 @@ export function Dashboard({ books, logs }: DashboardProps) {
     const currentlyReading = allWithLogs
       .filter(({ log }) => (log as any).status === 'reading')
       .sort((a, b) => {
-        const aDate =
-          parseDate((a.log as any).date_started)?.getTime() ?? 0;
-        const bDate =
-          parseDate((b.log as any).date_started)?.getTime() ?? 0;
+        const aDate = parseDate((a.log as any).started_at)?.getTime() ?? 0;
+        const bDate = parseDate((b.log as any).started_at)?.getTime() ?? 0;
         return bDate - aDate;
       })
       .slice(0, 5);
@@ -145,8 +119,8 @@ export function Dashboard({ books, logs }: DashboardProps) {
     const recentlyFinished = allWithLogs
       .filter(({ log }) => (log as any).status === 'finished')
       .sort((a, b) => {
-        const aDate = getFinishedDate(a.log)?.getTime() ?? 0;
-        const bDate = getFinishedDate(b.log)?.getTime() ?? 0;
+        const aDate = parseDate((a.log as any).finished_at)?.getTime() ?? 0;
+        const bDate = parseDate((b.log as any).finished_at)?.getTime() ?? 0;
         return bDate - aDate;
       })
       .slice(0, 5);
@@ -165,235 +139,252 @@ export function Dashboard({ books, logs }: DashboardProps) {
     };
   }, [books, logs, thisYear, now]);
 
-  const totalLogged = toReadCount + readingCount + finishedCount;
-  const unlogged = totalBooks - totalLogged;
+  const maxMonthly = monthlyFinished.reduce(
+    (max, m) => (m.count > max ? m.count : max),
+    0,
+  );
+
+  const maxRatingCount = ratingCounts.reduce(
+    (max, n) => (n > max ? n : max),
+    0,
+  );
+
+  // If you have zero data, show a gentle empty state
+  const hasAnyData = books.length > 0 || logs.length > 0;
 
   return (
     <div className="dashboard">
-      <section className="card">
-        <h2 style={{ marginTop: 0 }}>Overview</h2>
-        <div className="dashboard-grid">
-          <div className="stat-card">
-            <div className="stat-label">Total books</div>
-            <div className="stat-number">{totalBooks}</div>
-            <div className="stat-sub">
-              {unlogged > 0
-                ? `${unlogged} without a reading log`
-                : 'All books have logs'}
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-label">Reading status</div>
-            <div className="stat-pill-row">
-              <span className="pill pill-soft">
-                To read <strong>{toReadCount}</strong>
-              </span>
-              <span className="pill pill-soft">
-                Reading <strong>{readingCount}</strong>
-              </span>
-              <span className="pill pill-soft">
-                Finished <strong>{finishedCount}</strong>
-              </span>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-label">Finished this year</div>
-            <div className="stat-number">
-              {finishedThisYearCount}
-            </div>
-            <div className="stat-sub">
-              {finishedThisYearCount === 0
-                ? 'No finished books logged yet.'
-                : 'Based on your reading logs.'}
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-label">Average rating</div>
-            <div className="stat-number">
-              {averageRating ? averageRating.toFixed(1) : '—'}
-            </div>
-            <div className="stat-sub">
-              {averageRating
-                ? 'From books you’ve rated.'
-                : 'No ratings yet.'}
-            </div>
-          </div>
+      {!hasAnyData && (
+        <div className="card dashboard-empty">
+          <h2>Your reading dashboard</h2>
+          <p className="muted">
+            Once you start scanning books and logging your reading, this view
+            will come alive with stats and insights.
+          </p>
         </div>
-      </section>
+      )}
 
-      <section className="card">
-        <h3 style={{ marginTop: 0 }}>Rating distribution</h3>
-        {ratingCounts.every((c) => c === 0) ? (
-          <p className="muted" style={{ fontSize: '0.85rem' }}>
-            No ratings yet. When you rate books, you’ll see the
-            distribution here.
-          </p>
-        ) : (
-          <div className="rating-bars">
-            {ratingCounts.map((count, idx) => {
-              const stars = idx + 1;
-              const total = ratingCounts.reduce(
-                (sum, c) => sum + c,
-                0,
-              );
-              const pct = total === 0 ? 0 : (count / total) * 100;
-
-              return (
-                <div key={stars} className="rating-row">
-                  <div className="rating-label">
-                    {stars}⭐
-                  </div>
-                  <div className="rating-bar-shell">
-                    <div
-                      className="rating-bar-fill"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <div className="rating-count">
-                    {count}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className="card">
-        <h3 style={{ marginTop: 0 }}>Finished in the last 6 months</h3>
-        {monthlyFinished.every((m) => m.count === 0) ? (
-          <p className="muted" style={{ fontSize: '0.85rem' }}>
-            No finished books logged in the last 6 months.
-          </p>
-        ) : (
-          <div className="timeline">
-            {monthlyFinished.map(({ label, count }) => (
-              <div key={label} className="timeline-item">
-                <div className="timeline-label">{label}</div>
-                <div className="timeline-bar-shell">
-                  <div
-                    className="timeline-bar-fill"
-                    style={{
-                      width: count === 0 ? '4%' : `${20 + count * 10}%`,
-                    }}
-                  />
-                </div>
-                <div className="timeline-count">{count}</div>
+      {hasAnyData && (
+        <>
+          {/* Top KPI cards */}
+          <section className="dashboard-grid">
+            <div className="stat-card">
+              <div className="stat-icon">📚</div>
+              <div className="stat-kpi">{totalBooks}</div>
+              <div className="stat-label">Total books</div>
+              <div className="stat-sub">
+                {toReadCount} to read • {readingCount} reading • {finishedCount} finished
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            </div>
 
-      <section className="card">
-        <div className="dashboard-split">
-          <div className="dashboard-column">
-            <h3>Currently reading</h3>
-            {currentlyReading.length === 0 ? (
-              <p className="muted" style={{ fontSize: '0.85rem' }}>
-                No books marked as “reading” yet.
-              </p>
-            ) : (
-              <ul className="book-list">
-                {currentlyReading.map(({ book, log }) => {
-                  const started = parseDate(
-                    (log as any).date_started as string | null,
-                  );
-                  const startedLabel = started
-                    ? started.toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                      })
-                    : '—';
-                  const rating = (log as any).rating as
-                    | number
-                    | null
-                    | undefined;
+            <div className="stat-card">
+              <div className="stat-icon">🎯</div>
+              <div className="stat-kpi">
+                {finishedThisYearCount}
+              </div>
+              <div className="stat-label">Finished this year</div>
+              <div className="stat-sub">
+                {thisYear}
+              </div>
+            </div>
 
+            <div className="stat-card stat-card-accent">
+              <div className="stat-icon">⭐</div>
+              <div className="stat-kpi">
+                {averageRating === null ? '—' : averageRating.toFixed(1)}
+              </div>
+              <div className="stat-label">Average rating</div>
+              <div className="stat-sub">
+                {averageRating === null
+                  ? 'No ratings yet'
+                  : 'Based on your reading logs'}
+              </div>
+            </div>
+          </section>
+
+          {/* Timeline + rating distro */}
+          <section className="dashboard-grid dashboard-grid-2col">
+            {/* Timeline */}
+            <div className="card dashboard-panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Recent reading timeline</h3>
+                  <p className="muted">
+                    Finished books per month (last 6 months)
+                  </p>
+                </div>
+              </div>
+              <div className="timeline">
+                {monthlyFinished.map((m) => {
+                  const height =
+                    maxMonthly === 0
+                      ? 4
+                      : 6 + Math.round((m.count / maxMonthly) * 40);
                   return (
-                    <li key={(log as any).id} className="book-list-item">
-                      <div className="book-list-main">
-                        <div className="book-title">
-                          {book.title}
-                        </div>
-                        {book.author && (
-                          <div className="book-author">
-                            {book.author}
-                          </div>
-                        )}
+                    <div key={m.label} className="timeline-col">
+                      <div
+                        className="timeline-bar"
+                        style={{ height: `${height}px` }}
+                      >
+                        <div className="timeline-bar-inner" />
                       </div>
-                      <div className="book-list-meta">
-                        <span className="pill pill-soft">
-                          Started {startedLabel}
-                        </span>
-                        {rating ? (
-                          <span className="pill pill-soft">
-                            {rating}★
-                          </span>
-                        ) : null}
+                      <div className="timeline-count">
+                        {m.count > 0 ? m.count : ''}
                       </div>
-                    </li>
+                      <div className="timeline-label">{m.label}</div>
+                    </div>
                   );
                 })}
-              </ul>
-            )}
-          </div>
+              </div>
+            </div>
 
-          <div className="dashboard-column">
-            <h3>Recently finished</h3>
-            {recentlyFinished.length === 0 ? (
-              <p className="muted" style={{ fontSize: '0.85rem' }}>
-                No finished books yet. Once you mark books as
-                “finished”, the most recent ones will show here.
-              </p>
-            ) : (
-              <ul className="book-list">
-                {recentlyFinished.map(({ book, log }) => {
-                  const finished = getFinishedDate(log);
-                  const finishedLabel = finished
-                    ? finished.toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                      })
-                    : '—';
-                  const rating = (log as any).rating as
-                    | number
-                    | null
-                    | undefined;
-
+            {/* Rating distribution */}
+            <div className="card dashboard-panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Rating distribution</h3>
+                  <p className="muted">
+                    How you&apos;ve rated your books so far
+                  </p>
+                </div>
+              </div>
+              <div className="rating-distribution">
+                {ratingCounts.map((count, idx) => {
+                  const ratingValue = idx + 1;
+                  const width =
+                    maxRatingCount === 0
+                      ? 0
+                      : Math.max(
+                          8,
+                          Math.round((count / maxRatingCount) * 88),
+                        );
                   return (
-                    <li key={(log as any).id} className="book-list-item">
-                      <div className="book-list-main">
-                        <div className="book-title">
-                          {book.title}
-                        </div>
-                        {book.author && (
-                          <div className="book-author">
-                            {book.author}
-                          </div>
-                        )}
+                    <div key={ratingValue} className="rating-row">
+                      <div className="rating-label">
+                        {ratingValue} ⭐
                       </div>
-                      <div className="book-list-meta">
-                        <span className="pill pill-soft">
-                          Finished {finishedLabel}
-                        </span>
-                        {rating ? (
-                          <span className="pill pill-soft">
-                            {rating}★
-                          </span>
-                        ) : null}
+                      <div className="rating-bar">
+                        <div
+                          className="rating-bar-fill"
+                          style={{ width: `${width}%`, opacity: count ? 1 : 0.25 }}
+                        />
                       </div>
-                    </li>
+                      <div className="rating-count">
+                        {count}
+                      </div>
+                    </div>
                   );
                 })}
-              </ul>
-            )}
-          </div>
-        </div>
-      </section>
+              </div>
+            </div>
+          </section>
+
+          {/* Lists: currently reading & recently finished */}
+          <section className="dashboard-grid dashboard-grid-2col">
+            <div className="card dashboard-panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Currently reading</h3>
+                  <p className="muted">
+                    The books you&apos;re in the middle of right now
+                  </p>
+                </div>
+              </div>
+              {currentlyReading.length === 0 && (
+                <p className="muted small-text">
+                  You have no books marked as &quot;reading&quot; yet.
+                </p>
+              )}
+              {currentlyReading.length > 0 && (
+                <ul className="book-list">
+                  {currentlyReading.map(({ book, log }) => {
+                    const started = parseDate((log as any).started_at);
+                    const startedLabel = started
+                      ? started.toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : '—';
+                    const rating = (log as any).rating as number | null | undefined;
+
+                    return (
+                      <li key={book.id} className="book-list-item">
+                        <div className="book-list-main">
+                          <div className="book-list-title">
+                            {book.title || 'Untitled'}
+                          </div>
+                          {book.author && (
+                            <div className="book-list-author">{book.author}</div>
+                          )}
+                          <div className="book-list-meta">
+                            <span className="pill">Started {startedLabel}</span>
+                            {rating && (
+                              <span className="pill pill-soft">
+                                {rating.toFixed(1)} ⭐
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="card dashboard-panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Recently finished</h3>
+                  <p className="muted">
+                    The last few books you completed
+                  </p>
+                </div>
+              </div>
+              {recentlyFinished.length === 0 && (
+                <p className="muted small-text">
+                  Once you mark books as finished, they&apos;ll show up here.
+                </p>
+              )}
+              {recentlyFinished.length > 0 && (
+                <ul className="book-list">
+                  {recentlyFinished.map(({ book, log }) => {
+                    const finished = parseDate((log as any).finished_at);
+                    const finishedLabel = finished
+                      ? finished.toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : '—';
+                    const rating = (log as any).rating as number | null | undefined;
+
+                    return (
+                      <li key={book.id} className="book-list-item">
+                        <div className="book-list-main">
+                          <div className="book-list-title">
+                            {book.title || 'Untitled'}
+                          </div>
+                          {book.author && (
+                            <div className="book-list-author">{book.author}</div>
+                          )}
+                          <div className="book-list-meta">
+                            <span className="pill">Finished {finishedLabel}</span>
+                            {rating && (
+                              <span className="pill pill-soft">
+                                {rating.toFixed(1)} ⭐
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
