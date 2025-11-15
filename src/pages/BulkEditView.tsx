@@ -143,8 +143,8 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
             : null,
         date_started: startedAt || null,
         date_finished: finishedAt || null,
-        // Keep notes as-is if they exist already, otherwise null
-        notes: log && (log as any).notes ? (log as any).notes : null,
+        // Keep description as-is if they exist already, otherwise null
+        description: log && (log as any).description ? (log as any).description : null,
       };
 
       // 1) Check for existing log for this user+book
@@ -153,7 +153,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
         error: existingError,
       } = await supabase
         .from('reading_logs')
-        .select('id, status, rating, date_started, date_finished, notes')
+        .select('id, status, rating, date_started, date_finished, description')
         .eq('user_id', user.id)
         .eq('book_id', book.id)
         .maybeSingle();
@@ -176,7 +176,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
             rating: basePayload.rating,
             date_started: basePayload.date_started,
             date_finished: basePayload.date_finished,
-            notes: basePayload.notes,
+            description: basePayload.description,
           })
           .eq('id', (existing as any).id)
           .select()
