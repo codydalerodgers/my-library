@@ -1,5 +1,5 @@
 // src/components/BarcodeScanner.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import type { Result } from '@zxing/library';
 
@@ -12,117 +12,138 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
-  const [initialised, setInitialised] = useState(false);
+  const [ready, setReady] = useState(false);
 
-  // Discover cameras
+  // ------------------------------------------------------
+  // 1) Discover cameras and pick a sensible default
+  // ------------------------------------------------------
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
 
     (async () => {
       try {
-        const inputs = await BrowserMultiFormatReader.listVideoInputDevices();
-        if (!mounted) return;
+        // Trigger permission prompt so enumerateDevices returns labels
+        await navigator.mediaDevices.getUserMedia({ video: true });
 
+        const all = await navigator.mediaDevices.enumerateDevices();
+        if (cancelled) return;
+
+        const inputs = all.filter((d) => d.kind === 'videoinput');
         if (!inputs.length) {
-          setError('No camera found on this device.');
+          setError('No camera devices found.');
           return;
         }
 
-        // Prefer a back/rear/environment camera if the label exposes it
+        setDevices(inputs);
+
+        // Prefer a "back" / "rear" / "environment" camera if present
         const backIndex = inputs.findIndex((d) =>
           /back|rear|environment/i.test(d.label),
         );
-
-        setDevices(inputs);
         setSelectedIndex(backIndex >= 0 ? backIndex : 0);
-        setInitialised(true);
-      } catch (e: any) {
-        console.error(e);
-        if (mounted) {
-          setError('Unable to access camera devices.');
+        setReady(true);
+      } catch (e) {
+        if (!cancelled) {
+          console.error(e);
+          setError('Unable to access camera.');
         }
       }
     })();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, []);
 
-  // Start scanning whenever selectedIndex or devices change
+  // ------------------------------------------------------
+  // 2) Start/stop scanning when ready / device changes
+  // ------------------------------------------------------
   useEffect(() => {
-    if (!initialised || !devices.length || !videoRef.current) return;
+    if (!ready || !videoRef.current || !devices.length) return;
 
     const codeReader = new BrowserMultiFormatReader();
-    let isMounted = true;
-    let handled = false;
+    let active = true;
 
-    (async () => {
+    const stopStream = () => {
       try {
-        const device = devices[selectedIndex];
-        // Some environments return an empty deviceId but still work if we pass undefined
-        const deviceId = device?.deviceId || undefined;
-
-        await codeReader.decodeFromVideoDevice(
-          deviceId,
-          videoRef.current!,
-          (result: Result | undefined) => {
-            if (!isMounted || handled) return;
-            if (result) {
-              handled = true;
-              const text = result.getText();
-              onDetected(text);
-
-              // 🔻 Stop camera immediately after a successful scan
-              try {
-                const stream = videoRef.current?.srcObject as MediaStream | null;
-                stream?.getTracks().forEach((t) => t.stop());
-                videoRef.current!.srcObject = null;
-                // If zxing exposes reset, be polite and call it
-                (codeReader as any)?.reset?.();
-              } catch {
-                // ignore cleanup errors
-              }
-            }
-          },
-        );
-      } catch (e: any) {
-        console.error(e);
-        if (isMounted) {
-          setError('Unable to start camera. Check permissions and try again.');
-        }
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-      try {
-        // 🔻 Tell zxing to stop, if available
+        // Ask zxing to stop if it exposes reset
         (codeReader as any)?.reset?.();
+      } catch (err) {
+        console.warn('codeReader.reset() failed', err);
+      }
 
-        // 🔻 Stop any active MediaStream tracks
-        const stream = videoRef.current?.srcObject as MediaStream | null;
-        stream?.getTracks().forEach((t) => t.stop());
-        if (videoRef.current) {
-          videoRef.current.srcObject = null;
-        }
-      } catch {
-        // ignore cleanup errors
+      const video = videoRef.current;
+      if (video && video.srcObject instanceof MediaStream) {
+        const stream = video.srcObject as MediaStream;
+        stream.getTracks().forEach((t) => t.stop());
+        video.srcObject = null;
       }
     };
-  }, [devices, selectedIndex, initialised, onDetected]);
 
+    const device = devices[selectedIndex];
+    const deviceId = device?.deviceId || undefined;
+
+    codeReader
+      .decodeFromVideoDevice(
+        deviceId,
+        videoRef.current,
+        (result: Result | undefined, _err) => {
+          if (!active) return;
+          if (result) {
+            active = false;
+            const text = result.getText();
+
+            // 🔻 Stop camera immediately BEFORE notifying parent
+            // so that even if onDetected changes view, Safari sees tracks closed.
+            stopStream();
+            onDetected(text);
+          }
+        },
+      )
+      .catch((err) => {
+        if (!active) return;
+        console.error(err);
+        setError('Unable to start camera.');
+      });
+
+    // Cleanup on unmount / device change / tab switch
+    return () => {
+      active = false;
+      stopStream();
+    };
+  }, [ready, devices, selectedIndex, onDetected]);
+
+  // ------------------------------------------------------
+  // 3) Flip camera
+  // ------------------------------------------------------
   const handleFlipCamera = () => {
     if (!devices.length) return;
     setSelectedIndex((prev) => (prev + 1) % devices.length);
   };
 
+  // ------------------------------------------------------
+  // 4) Render
+  // ------------------------------------------------------
+  if (error) {
+    return (
+      <div className="scanner-shell">
+        <p className="muted">{error}</p>
+      </div>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <div className="scanner-shell">
+        <p className="muted">Initializing camera…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="scanner-shell">
       <div className="scanner-header-row">
-        <span className="muted scanner-label">
-          Camera {devices.length > 1 ? `(${selectedIndex + 1}/${devices.length})` : ''}
-        </span>
+        <div className="scanner-label">Live camera</div>
         {devices.length > 1 && (
           <button
             type="button"
@@ -134,17 +155,8 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
         )}
       </div>
 
-      {error && (
-        <div style={{ color: 'red', marginBottom: '0.5rem' }}>
-          {error}
-        </div>
-      )}
-
       <div className="scanner-frame">
-        <video
-          ref={videoRef}
-          className="scanner-video"
-        />
+        <video ref={videoRef} className="scanner-video" />
         <div className="scanner-overlay">
           <div className="scanner-box" />
         </div>
