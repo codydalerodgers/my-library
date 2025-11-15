@@ -100,9 +100,9 @@ export function Dashboard({ books, logs }: DashboardProps) {
             return sum + (typeof r === 'number' ? r : 0);
           }, 0) / ratedLogs.length;
 
-    // Last 6 months timeline (including current month)
+    // Last 12 months timeline (including current month)
     const monthlyFinished: { label: string; count: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const month = d.toLocaleString(undefined, { month: 'short' });
       const year = d.getFullYear();
@@ -212,82 +212,86 @@ export function Dashboard({ books, logs }: DashboardProps) {
             </div>
           </section>
 
-          {/* Timeline + rating distro */}
-          <section className="dashboard-grid dashboard-grid-2col">
-            {/* Timeline */}
+          {/* Timeline */}
+            <section className="dashboard-grid">
             <div className="card dashboard-panel">
-              <div className="panel-header">
+                <div className="panel-header">
                 <div>
-                  <h3>Recent reading timeline</h3>
-                  <p className="muted">
-                    Finished books per month (last 6 months)
-                  </p>
+                    <h3>Recent reading timeline</h3>
+                    <p className="muted">
+                    Finished books per month (last 12 months)
+                    </p>
                 </div>
-              </div>
-              <div className="timeline">
+                </div>
+                <div className="timeline">
                 {monthlyFinished.map((m) => {
-                  const height =
+                    const height =
                     maxMonthly === 0
-                      ? 4
-                      : 6 + Math.round((m.count / maxMonthly) * 40);
-                  return (
+                        ? 4
+                        : 6 + Math.round((m.count / maxMonthly) * 40);
+                    return (
                     <div key={m.label} className="timeline-col">
-                      <div
+                        <div
                         className="timeline-bar"
                         style={{ height: `${height}px` }}
-                      >
+                        >
                         <div className="timeline-bar-inner" />
-                      </div>
-                      <div className="timeline-count">
+                        </div>
+                        <div className="timeline-count">
                         {m.count > 0 ? m.count : ''}
-                      </div>
-                      <div className="timeline-label">{m.label}</div>
+                        </div>
+                        <div className="timeline-label">{m.label}</div>
                     </div>
-                  );
+                    );
                 })}
-              </div>
+                </div>
             </div>
+            </section>
 
             {/* Rating distribution */}
+            <section className="dashboard-grid">
             <div className="card dashboard-panel">
-              <div className="panel-header">
+                <div className="panel-header">
                 <div>
-                  <h3>Rating distribution</h3>
-                  <p className="muted">
+                    <h3>Rating distribution</h3>
+                    <p className="muted">
                     How you&apos;ve rated your books so far
-                  </p>
+                    </p>
                 </div>
-              </div>
-              <div className="rating-distribution">
+                </div>
+                <div className="rating-distribution">
                 {ratingCounts.map((count, idx) => {
-                  const ratingValue = idx + 1;
-                  const width =
+                    const ratingValue = idx + 1;
+                    const width =
                     maxRatingCount === 0
-                      ? 0
-                      : Math.max(
-                          8,
-                          Math.round((count / maxRatingCount) * 88),
+                        ? 0
+                        : Math.max(
+                            8,
+                            Math.round((count / maxRatingCount) * 88),
                         );
-                  return (
+                    return (
                     <div key={ratingValue} className="rating-row">
-                      <div className="rating-label">
+                        <div className="rating-label">
                         {ratingValue} ⭐
-                      </div>
-                      <div className="rating-bar">
+                        </div>
+                        <div className="rating-bar">
                         <div
-                          className="rating-bar-fill"
-                          style={{ width: `${width}%`, opacity: count ? 1 : 0.25 }}
+                            className="rating-bar-fill"
+                            style={{
+                            width: `${width}%`,
+                            opacity: count ? 1 : 0.25,
+                            }}
                         />
-                      </div>
-                      <div className="rating-count">
+                        </div>
+                        <div className="rating-count">
                         {count}
-                      </div>
+                        </div>
                     </div>
-                  );
+                    );
                 })}
-              </div>
+                </div>
             </div>
-          </section>
+            </section>
 
           {/* Lists: currently reading & recently finished */}
           <section className="dashboard-grid dashboard-grid-2col">
