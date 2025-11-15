@@ -14,37 +14,46 @@ export const BookDetail: React.FC<BookDetailProps> = ({
   onLogUpdated,
 }) => {
   const [status, setStatus] = useState<string>(
-    initialLog?.status ?? 'not_started',
+    initialLog?.status ?? 'to_read',
   );
   const [rating, setRating] = useState<number | null>(
     initialLog?.rating ?? null,
   );
   const [hoverRating, setHoverRating] = useState<number | null>(null);
-const [startedAt, setStartedAt] = useState<string>(
-(initialLog as any)?.date_started
-    ? (initialLog as any).date_started.slice(0, 10)
-    : '',
-);
 
-const [finishedAt, setFinishedAt] = useState<string>(
-(initialLog as any)?.date_finished
-    ? (initialLog as any).date_finished.slice(0, 10)
-    : '',
-);
+  const [startedAt, setStartedAt] = useState<string>(
+    (initialLog as any)?.date_started
+      ? (initialLog as any).date_started.slice(0, 10)
+      : '',
+  );
 
-const [description, setdescription] = useState<string>(
-((initialLog as any)?.description as string) ?? '',
-);
+  const [finishedAt, setFinishedAt] = useState<string>(
+    (initialLog as any)?.date_finished
+      ? (initialLog as any).date_finished.slice(0, 10)
+      : '',
+  );
+
+  const [description, setDescription] = useState<string>(
+    ((initialLog as any)?.description as string) ?? '',
+  );
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // If initialLog changes (e.g. from an import or another save), sync up.
-    setStatus(initialLog?.status ?? 'not_started');
+    setStatus(initialLog?.status ?? 'to_read');
     setRating(initialLog?.rating ?? null);
-    setStartedAt(initialLog?.date_started ? initialLog.date_started.slice(0, 10) : '');
-    setFinishedAt(initialLog?.date_finished ? initialLog.date_finished.slice(0, 10) : '');
-    setdescription(initialLog?.description ?? '');
+
+    const anyLog = initialLog as any;
+
+    setStartedAt(
+      anyLog?.date_started ? anyLog.date_started.slice(0, 10) : '',
+    );
+    setFinishedAt(
+      anyLog?.date_finished ? anyLog.date_finished.slice(0, 10) : '',
+    );
+    setDescription(anyLog?.description ?? '');
   }, [initialLog]);
 
   const handleStarClick = (value: number) => {
@@ -81,12 +90,12 @@ const [description, setdescription] = useState<string>(
         const payload = {
         user_id: user.id,
         book_id: book.id,
-        status, // see status note below
+        status,
         rating,
-        date_started: startedAt || null,
-        date_finished: finalFinishedAt || null,
+        date_started: startedAt || null,      // stays null if left blank
+        date_finished: finishedAt || null,    // stays null if left blank
         description: description.trim() || null,
-        };
+      };
 
       // Upsert reading log based on (user_id, book_id)
       const { data, error: upsertError } = await supabase
@@ -250,8 +259,8 @@ const [description, setdescription] = useState<string>(
                 className="textarea"
                 placeholder="What did you think of this book?"
                 value={description}
-                onChange={(e) => setdescription(e.target.value)}
-              />
+                onChange={(e) => setDescription(e.target.value)}
+                />
             </div>
 
             {error && (

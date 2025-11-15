@@ -19,8 +19,6 @@ type StatusFilter =
   | 'to_read'
   | 'reading'
   | 'finished'
-  | 'paused'
-  | 'abandoned'
   | 'no_log';
 
 function parseDate(value?: string | null): Date | null {
@@ -310,8 +308,6 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
                 <option value="to_read">To read</option>
                 <option value="reading">Reading</option>
                 <option value="finished">Finished</option>
-                <option value="paused">Paused</option>
-                <option value="abandoned">Abandoned</option>
               </select>
             </div>
 
@@ -492,8 +488,6 @@ export const BulkEditView: React.FC<BulkEditViewProps> = ({
               <option value="to_read">To read</option>
               <option value="reading">Reading</option>
               <option value="finished">Finished</option>
-              <option value="paused">Paused</option>
-              <option value="abandoned">Abandoned</option>
               <option value="no_log">No log</option>
             </select>
           </div>
