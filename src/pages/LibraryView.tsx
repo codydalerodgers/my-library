@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Book, ReadingLog } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { fetchCoverUrl } from '../lib/bookMetadata';
 
 interface LibraryViewProps {
   books: Book[];
@@ -11,71 +12,6 @@ interface LibraryViewProps {
 
 type Filter = 'all' | 'reading' | 'finished' | 'unread';
 type SortMode = 'recent' | 'title' | 'author' | 'rating';
-
-// Helper: try to find a cover URL for an ISBN using Open Library
-async function lookupCoverUrlFromIsbn(isbn: string): Promise<string | null> {
-  const normalized = isbn.replace(/[^0-9Xx]/g, '');
-  if (!normalized) return null;
-
-  // Helper to force https / strip weird query params if needed
-  const cleanUrl = (url: string) =>
-    url.replace(/^http:\/\//i, 'https://');
-
-  // --- 1) Open Library cover service by ISBN (direct image) ---
-  try {
-    const candidate = `https://covers.openlibrary.org/b/isbn/${normalized}-L.jpg?default=false`;
-    const res = await fetch(candidate, { method: 'HEAD' });
-    if (res.ok) {
-      return candidate;
-    }
-  } catch {
-    // ignore and fall through
-  }
-
-  // --- 2) Open Library API (sometimes has covers even when the direct
-  //         cover service doesn't respond how we expect) ---
-  try {
-    const apiUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${normalized}&format=json&jscmd=data`;
-    const res = await fetch(apiUrl);
-    if (res.ok) {
-      const data = await res.json();
-      const entry = data[`ISBN:${normalized}`];
-      const olCover =
-        entry?.cover?.large || entry?.cover?.medium || entry?.cover?.small;
-      if (olCover) {
-        return cleanUrl(olCover);
-      }
-    }
-  } catch {
-    // ignore and fall through
-  }
-
-  // --- 3) Google Books API as a backup source ---
-  try {
-    const gbUrl = `https://www.googleapis.com/books/v1/volumes?q=isbn:${normalized}`;
-    const res = await fetch(gbUrl);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.items) && data.items.length > 0) {
-        const info = data.items[0].volumeInfo;
-        const img =
-          info?.imageLinks?.thumbnail ||
-          info?.imageLinks?.smallThumbnail ||
-          info?.imageLinks?.small ||
-          info?.imageLinks?.medium ||
-          info?.imageLinks?.large;
-        if (img) {
-          return cleanUrl(img);
-        }
-      }
-    }
-  } catch {
-    // ignore and fall through
-  }
-
-  // If all sources fail, give up
-  return null;
-}
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   books,
@@ -113,7 +49,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       for (const book of batch) {
         if (cancelled) return;
 
-        const url = await lookupCoverUrlFromIsbn(book.isbn as string);
+        const url = await fetchCoverUrl(book.isbn as string);
         if (!url) continue;
 
         // Update Supabase so it persists

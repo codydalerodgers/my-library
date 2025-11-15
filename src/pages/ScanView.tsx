@@ -5,8 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import type { Book } from '../types';
 
 interface ScanViewProps {
-  // second param is now a "tag": 'existing' or 'new'
-  onBookFound: (book: Book | null, tag: string) => void;
+  onBookFound: (book: Book | null) => void;
   onBack: () => void;
 }
 
@@ -177,7 +176,7 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
         // Existing book → go straight to detail via parent
         setStatus('Book already in your library.');
         setFormVisible(false);
-        onBookFound(data as Book, normalized);
+        onBookFound(data as Book);
       } else {
         // New book → fetch metadata, show confirmation form
         setStatus('Not in your library. Looking up details from Open Library...');
@@ -247,7 +246,7 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
       setFormVisible(false);
 
       // Tell parent this is a NEW book
-      onBookFound(newBook, formIsbn);
+      onBookFound(newBook);
     } catch (e: any) {
       console.error(e);
       setFormError(e?.message || 'Failed to save book.');

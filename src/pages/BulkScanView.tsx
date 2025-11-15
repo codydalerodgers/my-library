@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import type { Book } from '../types';
+import { normalizeIsbn, fetchBookMetadata } from '../lib/bookMetadata';
 
 interface BulkScanViewProps {
   onBookAdded?: (book: Book) => void;
@@ -15,90 +16,6 @@ interface BulkEntry {
   status: EntryStatus;
   message?: string;
   title?: string;
-}
-
-// Normalize ISBN-ish strings: keep digits + X/x
-function normalizeIsbn(raw: string): string {
-  return raw.replace(/[^0-9Xx]/g, '');
-}
-
-// More robust metadata lookup: OL cover + OL API + Google Books
-async function fetchMetadataByIsbn(isbn: string) {
-  const normalized = normalizeIsbn(isbn);
-  if (!normalized) return null;
-
-  const cleanUrl = (url: string) =>
-    url.replace(/^http:\/\//i, 'https://');
-
-  // Try Open Library API (data)
-  try {
-    const apiUrl = `https://openlibrary.org/api/books?bibkeys=ISBN:${normalized}&format=json&jscmd=data`;
-    const res = await fetch(apiUrl);
-    if (res.ok) {
-      const data = await res.json();
-      const entry = data[`ISBN:${normalized}`];
-      if (entry) {
-        const title: string | undefined = entry.title;
-        const authorsArr: { name: string }[] | undefined = entry.authors;
-        const author =
-          authorsArr && authorsArr.length > 0
-            ? authorsArr.map((a) => a.name).join(', ')
-            : undefined;
-        const pages: number | undefined = entry.number_of_pages;
-        const olCover =
-          entry.cover?.large || entry.cover?.medium || entry.cover?.small;
-
-        if (title) {
-          return {
-            isbn: normalized,
-            title,
-            author,
-            pageCount: pages ?? null,
-            coverUrl: olCover ? cleanUrl(olCover) : null,
-            description:
-              typeof entry.description === 'string'
-                ? entry.description
-                : entry.description?.value ?? null,
-          };
-        }
-      }
-    }
-  } catch {
-    // ignore and fall through
-  }
-
-  // Fallback: Google Books
-  try {
-    const gbUrl = `https://www.googleapis.com/books/v1/volumes?q=isbn:${normalized}`;
-    const res = await fetch(gbUrl);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.items) && data.items.length > 0) {
-        const info = data.items[0].volumeInfo;
-        const img =
-          info?.imageLinks?.thumbnail ||
-          info?.imageLinks?.smallThumbnail ||
-          info?.imageLinks?.small ||
-          info?.imageLinks?.medium ||
-          info?.imageLinks?.large;
-
-        return {
-          isbn: normalized,
-          title: info?.title ?? null,
-          author: Array.isArray(info?.authors)
-            ? info.authors.join(', ')
-            : null,
-          pageCount: info?.pageCount ?? null,
-          coverUrl: img ? cleanUrl(img) : null,
-          description: info?.description ?? null,
-        };
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
 }
 
 export const BulkScanView: React.FC<BulkScanViewProps> = ({ onBookAdded }) => {
@@ -198,7 +115,7 @@ export const BulkScanView: React.FC<BulkScanViewProps> = ({ onBookAdded }) => {
       }
 
       // 2) Fetch metadata
-      const metadata = await fetchMetadataByIsbn(normalized);
+      const metadata = await fetchBookMetadata(normalized);
       if (!metadata || !metadata.title) {
         updateEntry(id, {
           status: 'error',

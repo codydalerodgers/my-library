@@ -32,7 +32,8 @@ export const App: React.FC = () => {
         .from("books")
         .select("*")
         .eq("user_id", userId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(0, 1999); // up to 2000 books for now
 
       if (!booksError && bookRows) {
         setBooks(bookRows as Book[]);
