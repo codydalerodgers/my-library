@@ -72,7 +72,17 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
               handled = true;
               const text = result.getText();
               onDetected(text);
-              // We don't call reset(); we just ignore further results
+
+              // 🔻 Stop camera immediately after a successful scan
+              try {
+                const stream = videoRef.current?.srcObject as MediaStream | null;
+                stream?.getTracks().forEach((t) => t.stop());
+                videoRef.current!.srcObject = null;
+                // If zxing exposes reset, be polite and call it
+                (codeReader as any)?.reset?.();
+              } catch {
+                // ignore cleanup errors
+              }
             }
           },
         );
@@ -87,8 +97,15 @@ export const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDetected }) =>
     return () => {
       isMounted = false;
       try {
+        // 🔻 Tell zxing to stop, if available
+        (codeReader as any)?.reset?.();
+
+        // 🔻 Stop any active MediaStream tracks
         const stream = videoRef.current?.srcObject as MediaStream | null;
         stream?.getTracks().forEach((t) => t.stop());
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
       } catch {
         // ignore cleanup errors
       }
