@@ -1,8 +1,9 @@
 // src/pages/ScanView.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { supabase } from '../lib/supabaseClient';
 import type { Book } from '../types';
+import { fetchBookMetadata } from '../lib/bookMetadata';
 
 interface ScanViewProps {
   onBookFound: (book: Book | null) => void;
@@ -40,81 +41,6 @@ async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   });
 }
 
-async function fetchOpenLibraryMetadata(isbnRaw: string): Promise<{
-  title: string;
-  author: string | null;
-  pageCount: number | null;
-  description: string | null;
-  coverUrl: string | null;
-} | null> {
-  const digits = isbnRaw.replace(/[^\dX]/gi, '');
-
-  const tryIsbn = async (isbn: string) => {
-    try {
-      const resp = await fetch(
-        `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`,
-      );
-      if (!resp.ok) return null;
-
-      const json = (await resp.json()) as Record<string, OpenLibraryApiBook>;
-      const key = `ISBN:${isbn}`;
-      const data = json[key];
-      if (!data) return null;
-
-      const title = data.title ?? '';
-      const author = data.authors?.[0]?.name ?? null;
-      const pageCount = data.number_of_pages ?? null;
-
-      let description: string | null = null;
-      if (typeof data.description === 'string') {
-        description = data.description;
-      } else if (data.description && typeof data.description === 'object') {
-        description = (data.description as any).value ?? null;
-      }
-
-      const coverUrl =
-        data.cover?.large || data.cover?.medium || data.cover?.small || null;
-
-      return {
-        title,
-        author,
-        pageCount,
-        description,
-        coverUrl,
-      };
-    } catch (e) {
-      console.error('Open Library API error', e);
-      return null;
-    }
-  };
-
-  const primary = await tryIsbn(digits);
-  if (primary) return primary;
-
-  if (digits.length === 13 && (digits.startsWith('978') || digits.startsWith('979'))) {
-    const core = digits.slice(3, 12);
-    if (/^\d{9}$/.test(core)) {
-      let sum = 0;
-      for (let i = 0; i < 9; i++) {
-        const d = Number(core[i]);
-        sum += d * (10 - i);
-      }
-      const remainder = sum % 11;
-      const check = 11 - remainder;
-      let checkDigit: string;
-      if (check === 10) checkDigit = 'X';
-      else if (check === 11) checkDigit = '0';
-      else checkDigit = String(check);
-
-      const isbn10 = core + checkDigit;
-      const alt = await tryIsbn(isbn10);
-      if (alt) return alt;
-    }
-  }
-
-  return null;
-}
-
 export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
   const [showScanner, setShowScanner] = useState(true);
   const [lastCode, setLastCode] = useState<string | null>(null);
@@ -130,6 +56,29 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Hard kill any active camera when leaving this view (Safari can be stubborn)
+  useEffect(() => {
+    return () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          return;
+        }
+        // Open a tiny video stream and immediately stop all tracks.
+        // This closes any lingering camera use across libraries.
+        navigator.mediaDevices
+          .getUserMedia({ video: true })
+          .then((stream) => {
+            stream.getTracks().forEach((track) => track.stop());
+          })
+          .catch(() => {
+            // Ignore errors; this is just a best-effort cleanup.
+          });
+      } catch {
+        // Ignore unexpected errors in cleanup.
+      }
+    };
+  }, []);
 
   const resetForRescan = () => {
     setShowScanner(true);
@@ -179,14 +128,14 @@ export const ScanView: React.FC<ScanViewProps> = ({ onBookFound, onBack }) => {
         onBookFound(data as Book);
       } else {
         // New book → fetch metadata, show confirmation form
-        setStatus('Not in your library. Looking up details from Open Library...');
-        const meta = await fetchOpenLibraryMetadata(normalized);
+        setStatus('Not in your library. Looking up details…');
+        const meta = await fetchBookMetadata(normalized);
 
         setFormIsbn(normalized);
-        setTitle(meta?.title || '');
-        setAuthor(meta?.author || '');
+        setTitle(meta?.title ?? '');
+        setAuthor(meta?.author ?? '');
         setPageCount(meta?.pageCount ?? '');
-        setDescription(meta?.description || '');
+        setDescription(meta?.description ?? '');
 
         if (meta) {
           setStatus('We found details. Confirm and save.');
