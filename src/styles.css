@@ -741,6 +741,253 @@ main,
   }
 }
 
+/* === Dashboard === */
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dashboard-empty h2 {
+  margin-top: 0;
+  margin-bottom: 0.25rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.dashboard-grid-2col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stat-card {
+  position: relative;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: radial-gradient(circle at top left, #eef2ff, #ffffff);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.stat-card-accent {
+  background: radial-gradient(circle at top left, #f97316, #ffffff);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.stat-icon {
+  font-size: 1.4rem;
+}
+
+.stat-kpi {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.stat-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.dashboard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.panel-header p {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+}
+
+/* Timeline */
+
+.timeline {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.timeline-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  flex: 1;
+}
+
+.timeline-bar {
+  width: 100%;
+  max-width: 28px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.timeline-bar-inner {
+  width: 70%;
+  border-radius: 999px;
+  height: 100%;
+  background: linear-gradient(180deg, #6366f1, #4f46e5);
+  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.5);
+}
+
+.timeline-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-height: 1rem;
+}
+
+.timeline-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Rating distribution */
+
+.rating-distribution {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.rating-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.rating-label {
+  color: var(--text-muted);
+  min-width: 3.2rem;
+}
+
+.rating-bar {
+  position: relative;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.rating-bar-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  transition: width 0.25s ease;
+}
+
+.rating-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* Lists */
+
+.book-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.book-list-item {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.book-list-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.book-list-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.book-list-author {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+.book-list-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+}
+
+.pill {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(148, 163, 184, 0.18);
+  color: #0f172a;
+}
+
+.pill-soft {
+  background: rgba(250, 204, 21, 0.24);
+}
+
+.small-text {
+  font-size: 0.8rem;
+}
+
+/* Dashboard responsive tweaks */
+
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid-2col {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline {
+    gap: 0.5rem;
+  }
+
+  .timeline-col {
+    max-width: 40px;
+  }
+}
+
 /* === Responsive tweaks === */
 
 @media (max-width: 640px) {
