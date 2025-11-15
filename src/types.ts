@@ -19,18 +19,15 @@ export interface ReadingLog {
 
   // Include all valid statuses
   status:
-    | 'not_started'
     | 'to_read'
     | 'reading'
-    | 'finished'
-    | 'paused'
-    | 'abandoned';
+    | 'finished';
 
   rating: number | null;
 
-  started_at?: string | null;
-  finished_at?: string | null;
-  notes?: string | null;
+  date_started?: string | null;
+  date_finished?: string | null;
+  description?: string | null;
 
   created_at?: string;
   updated_at?: string;

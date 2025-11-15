@@ -19,6 +19,16 @@ function parseDate(value: string | Date | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function getEffectiveFinishedDate(log: ReadingLog): Date | null {
+    const d1 = parseDate((log as any).date_finished);
+    if (d1) return d1;
+
+    const d2 = parseDate((log as any).updated_at);
+    if (d2) return d2;
+
+    return parseDate((log as any).created_at);
+}
+
 export function Dashboard({ books, logs }: DashboardProps) {
   const now = new Date();
   const thisYear = now.getFullYear();
@@ -78,8 +88,8 @@ export function Dashboard({ books, logs }: DashboardProps) {
     });
 
     const finishedThisYearCount = finishedLogs.filter((log) => {
-      const d = parseDate((log as any).finished_at);
-      return d && d.getFullYear() === thisYear;
+        const d = getEffectiveFinishedDate(log);
+        return d && d.getFullYear() === thisYear;
     }).length;
 
     const averageRating =
@@ -98,9 +108,9 @@ export function Dashboard({ books, logs }: DashboardProps) {
       const year = d.getFullYear();
 
       const count = finishedLogs.filter((log) => {
-        const fd = parseDate((log as any).finished_at);
+        const fd = getEffectiveFinishedDate(log); // or parseDate((log as any).date_finished)
         return fd && fd.getFullYear() === year && fd.getMonth() === d.getMonth();
-      }).length;
+        }).length;
 
       monthlyFinished.push({ label: month, count });
     }
@@ -109,21 +119,21 @@ export function Dashboard({ books, logs }: DashboardProps) {
     const currentlyReading = allWithLogs
       .filter(({ log }) => (log as any).status === 'reading')
       .sort((a, b) => {
-        const aDate = parseDate((a.log as any).started_at)?.getTime() ?? 0;
-        const bDate = parseDate((b.log as any).started_at)?.getTime() ?? 0;
+        const aDate = parseDate((a.log as any).date_started)?.getTime() ?? 0;
+        const bDate = parseDate((b.log as any).date_started)?.getTime() ?? 0;
         return bDate - aDate;
       })
       .slice(0, 5);
 
     // Recently finished list
     const recentlyFinished = allWithLogs
-      .filter(({ log }) => (log as any).status === 'finished')
-      .sort((a, b) => {
-        const aDate = parseDate((a.log as any).finished_at)?.getTime() ?? 0;
-        const bDate = parseDate((b.log as any).finished_at)?.getTime() ?? 0;
-        return bDate - aDate;
-      })
-      .slice(0, 5);
+        .filter(({ log }) => (log as any).status === 'finished')
+        .sort((a, b) => {
+            const aDate = getEffectiveFinishedDate(a.log)?.getTime() ?? 0;
+            const bDate = getEffectiveFinishedDate(b.log)?.getTime() ?? 0;
+            return bDate - aDate;
+        })
+    .slice(0, 5);
 
     return {
       totalBooks,
@@ -298,7 +308,7 @@ export function Dashboard({ books, logs }: DashboardProps) {
               {currentlyReading.length > 0 && (
                 <ul className="book-list">
                   {currentlyReading.map(({ book, log }) => {
-                    const started = parseDate((log as any).started_at);
+                    const started = parseDate((log as any).date_started);
                     const startedLabel = started
                       ? started.toLocaleDateString(undefined, {
                           month: 'short',
@@ -349,7 +359,7 @@ export function Dashboard({ books, logs }: DashboardProps) {
               {recentlyFinished.length > 0 && (
                 <ul className="book-list">
                   {recentlyFinished.map(({ book, log }) => {
-                    const finished = parseDate((log as any).finished_at);
+                    const finished = getEffectiveFinishedDate(log);
                     const finishedLabel = finished
                       ? finished.toLocaleDateString(undefined, {
                           month: 'short',

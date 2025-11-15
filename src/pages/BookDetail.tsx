@@ -20,13 +20,21 @@ export const BookDetail: React.FC<BookDetailProps> = ({
     initialLog?.rating ?? null,
   );
   const [hoverRating, setHoverRating] = useState<number | null>(null);
-  const [startedAt, setStartedAt] = useState<string>(
-    initialLog?.started_at ? initialLog.started_at.slice(0, 10) : '',
-  );
-  const [finishedAt, setFinishedAt] = useState<string>(
-    initialLog?.finished_at ? initialLog.finished_at.slice(0, 10) : '',
-  );
-  const [notes, setNotes] = useState<string>(initialLog?.notes ?? '');
+const [startedAt, setStartedAt] = useState<string>(
+(initialLog as any)?.date_started
+    ? (initialLog as any).date_started.slice(0, 10)
+    : '',
+);
+
+const [finishedAt, setFinishedAt] = useState<string>(
+(initialLog as any)?.date_finished
+    ? (initialLog as any).date_finished.slice(0, 10)
+    : '',
+);
+
+const [description, setdescription] = useState<string>(
+((initialLog as any)?.description as string) ?? '',
+);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,9 +42,9 @@ export const BookDetail: React.FC<BookDetailProps> = ({
     // If initialLog changes (e.g. from an import or another save), sync up.
     setStatus(initialLog?.status ?? 'not_started');
     setRating(initialLog?.rating ?? null);
-    setStartedAt(initialLog?.started_at ? initialLog.started_at.slice(0, 10) : '');
-    setFinishedAt(initialLog?.finished_at ? initialLog.finished_at.slice(0, 10) : '');
-    setNotes(initialLog?.notes ?? '');
+    setStartedAt(initialLog?.date_started ? initialLog.date_started.slice(0, 10) : '');
+    setFinishedAt(initialLog?.date_finished ? initialLog.date_finished.slice(0, 10) : '');
+    setdescription(initialLog?.description ?? '');
   }, [initialLog]);
 
   const handleStarClick = (value: number) => {
@@ -64,15 +72,21 @@ export const BookDetail: React.FC<BookDetailProps> = ({
         return;
       }
 
-      const payload = {
+      // If status is "finished" and no date chosen, default to today (YYYY-MM-DD)
+        let finalFinishedAt = finishedAt;
+        if (status === 'finished' && !finalFinishedAt) {
+        finalFinishedAt = new Date().toISOString().slice(0, 10);
+        }
+
+        const payload = {
         user_id: user.id,
         book_id: book.id,
-        status,
+        status, // see status note below
         rating,
-        started_at: startedAt || null,
-        finished_at: finishedAt || null,
-        notes: notes.trim() || null,
-      };
+        date_started: startedAt || null,
+        date_finished: finalFinishedAt || null,
+        description: description.trim() || null,
+        };
 
       // Upsert reading log based on (user_id, book_id)
       const { data, error: upsertError } = await supabase
@@ -192,11 +206,8 @@ export const BookDetail: React.FC<BookDetailProps> = ({
                 onChange={(e) => setStatus(e.target.value)}
               >
                 <option value="to_read">To read</option>
-                <option value="not_started">Not started</option>
                 <option value="reading">Reading</option>
                 <option value="finished">Finished</option>
-                <option value="paused">Paused</option>
-                <option value="abandoned">Abandoned</option>
               </select>
             </div>
 
@@ -205,11 +216,11 @@ export const BookDetail: React.FC<BookDetailProps> = ({
               style={{ display: 'flex', gap: '0.75rem' }}
             >
               <div style={{ flex: 1 }}>
-                <label className="label" htmlFor="started_at">
+                <label className="label" htmlFor="date_started">
                   Date started
                 </label>
                 <input
-                  id="started_at"
+                  id="date_started"
                   type="date"
                   className="input"
                   value={startedAt}
@@ -217,11 +228,11 @@ export const BookDetail: React.FC<BookDetailProps> = ({
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <label className="label" htmlFor="finished_at">
+                <label className="label" htmlFor="date_finished">
                   Date finished
                 </label>
                 <input
-                  id="finished_at"
+                  id="date_finished"
                   type="date"
                   className="input"
                   value={finishedAt}
@@ -231,15 +242,15 @@ export const BookDetail: React.FC<BookDetailProps> = ({
             </div>
 
             <div className="form-row">
-              <label className="label" htmlFor="notes">
-                Thoughts / notes
+              <label className="label" htmlFor="description">
+                Thoughts / description
               </label>
               <textarea
-                id="notes"
+                id="description"
                 className="textarea"
                 placeholder="What did you think of this book?"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                value={description}
+                onChange={(e) => setdescription(e.target.value)}
               />
             </div>
 
