@@ -92,7 +92,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
     finishedAt !== initialRef.current.finishedAt;
 
   const handleSave = async () => {
-    if (!dirty) return; // nothing to do
+    if (!dirty) return; // nothing changed
 
     setSaving(true);
     setError(null);
@@ -128,7 +128,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
           ? Number(rating.trim())
           : null;
 
-      const payload = {
+      const basePayload = {
         user_id: user.id,
         book_id: book.id,
         status: effectiveStatus,
@@ -142,22 +142,71 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
         notes: log && (log as any).notes ? (log as any).notes : null,
       };
 
-      // Upsert reading log based on (user_id, book_id)
-      const { data, error: upsertError } = await supabase
+      // 1) Check for existing log for this user+book
+      const {
+        data: existing,
+        error: existingError,
+      } = await supabase
         .from('reading_logs')
-        .upsert(payload, { onConflict: 'user_id,book_id' })
-        .select()
-        .single();
+        .select('id, status, rating, started_at, finished_at, notes')
+        .eq('user_id', user.id)
+        .eq('book_id', book.id)
+        .maybeSingle();
 
-      if (upsertError) {
-        console.error(upsertError);
-        setError('Failed to save. Please try again.');
+      if (existingError) {
+        console.error(existingError);
+        setError('Failed to check existing log.');
+        setSaving(false);
+        return;
+      }
+
+      let newLog: ReadingLog | null = null;
+
+      if (existing) {
+        // 2a) Update existing
+        const { data, error: updateError } = await supabase
+          .from('reading_logs')
+          .update({
+            status: basePayload.status,
+            rating: basePayload.rating,
+            started_at: basePayload.started_at,
+            finished_at: basePayload.finished_at,
+            notes: basePayload.notes,
+          })
+          .eq('id', (existing as any).id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error(updateError);
+          setError('Failed to save. Please try again.');
+          setSaving(false);
+          return;
+        }
+
+        newLog = data as ReadingLog;
       } else {
-        const newLog = data as ReadingLog;
-        // Update parent state
+        // 2b) Insert new
+        const { data, error: insertError } = await supabase
+          .from('reading_logs')
+          .insert(basePayload)
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error(insertError);
+          setError('Failed to save. Please try again.');
+          setSaving(false);
+          return;
+        }
+
+        newLog = data as ReadingLog;
+      }
+
+      // 3) Notify parent + reset our "initial" snapshot so Save disables again
+      if (newLog) {
         onLogUpdated(newLog);
 
-        // Refresh our "initial" snapshot to the saved values
         const nextInitial = {
           status: (newLog as any).status || '',
           rating:
@@ -169,6 +218,7 @@ const BulkEditRow: React.FC<RowProps> = ({ book, log, onLogUpdated }) => {
           finishedAt:
             ((newLog as any).finished_at as string | null) || '',
         };
+
         initialRef.current = nextInitial;
         setStatus(nextInitial.status);
         setRating(nextInitial.rating);
