@@ -760,6 +760,11 @@ main,
   gap: 0.8rem;
 }
 
+/* NEW: single-column full-width variant */
+.dashboard-grid-full {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .dashboard-grid-2col {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

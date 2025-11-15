@@ -213,7 +213,7 @@ export function Dashboard({ books, logs }: DashboardProps) {
           </section>
 
           {/* Timeline */}
-            <section className="dashboard-grid">
+            <section className="dashboard-grid dashboard-grid-full">
             <div className="card dashboard-panel">
                 <div className="panel-header">
                 <div>
@@ -249,7 +249,7 @@ export function Dashboard({ books, logs }: DashboardProps) {
             </section>
 
             {/* Rating distribution */}
-            <section className="dashboard-grid">
+            <section className="dashboard-grid dashboard-grid-full">
             <div className="card dashboard-panel">
                 <div className="panel-header">
                 <div>
