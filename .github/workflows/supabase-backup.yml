@@ -14,13 +14,10 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Node (for Supabase CLI)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
       - name: Install Supabase CLI
-        run: npm install -g supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
       - name: Set Supabase auth
         env:
