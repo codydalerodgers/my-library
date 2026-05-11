@@ -337,14 +337,30 @@ main,
 
 .library-controls {
   width: 100%;
-  max-width: 320px;
+  /* Allow the search input to be wider when space permits. The app-shell max-width
+     is 960px, so doubling the prior control width gives room for a long search box. */
+  max-width: 640px;
   display: flex;
-  gap: 0.4rem;
+  gap: 0.6rem;
   align-items: center;
 }
 
+.library-controls .input {
+  /* Let the search input take remaining space and shrink properly when needed. */
+  flex: 1 1 auto;
+  min-width: 0; /* prevents overflow when parent is narrow */
+}
+
 .sort-select {
-  max-width: 150px;
+  max-width: 160px;
+  /* Make the select look more clearly interactive: show a caret, add extra right padding
+     so the caret doesn't overlap text, and ensure a pointer cursor. Using an inline SVG
+     keeps this purely CSS and avoids additional assets. */
+  padding-right: 2.2rem;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='1.5'><path d='M6 8l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
 }
 
 .book-grid {
